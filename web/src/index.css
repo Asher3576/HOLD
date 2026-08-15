@@ -1,35 +1,232 @@
-/* HOLD 팔레트 — 홀디 게이미피케이션 톤 */
+/* HOLD 디자인 토큰 v5 — 다크 글래스 (design_handoff_hold 기준) */
 :root {
-  --bg: #edeae3; /* 배경 (웜 그레이지) */
-  --card: #faf8f3; /* 카드 (아이보리) */
-  --ink: #1c1b18; /* 본문 텍스트 */
-  --primary: #1f5f5b; /* 딥 그린 — 홀디/진행 */
-  --egg: #f2e8d8; /* 알 크림 */
-  --danger: #b4544a; /* 손절/경고 (수익률 색이 아님) */
-  --info: #3e6491; /* 정보 블루 */
+  --desk: #07080c;
+  --bg: #0b0e14;
+  --chart-site: #131722;
+  --chart-canvas: #0f131c;
+  --ink: #f2f4f8;
+  --sub: #99a1b3;
+  --dim: #7a8296;
+  --faint: #5a6170;
+  --faint2: #6b7280;
+  --brand: #fa3b4a;
+  --brand-light: #ff6b77;
+  --brand-lighter: #ff8a93;
+  --mint: #57c7a4;
+  --up: #e36a5c; /* 상승(국내 관례) */
+  --down: #7fa8e8;
+  --egg-cream: #f6edd9;
+  --egg-wild: #6e7686;
+  --egg-gold: #efd9a8;
+  --chick: #ffc66e;
+  --line-ink: #11141b;
 }
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--desk);
 }
 
 body {
-  margin: 0;
-  background: var(--bg);
   color: var(--ink);
   font-family:
-    'Pretendard',
     -apple-system,
     BlinkMacSystemFont,
+    'Apple SD Gothic Neo',
     'Segoe UI',
-    Roboto,
     'Noto Sans KR',
+    'Malgun Gothic',
     sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-#root {
-  max-width: 480px;
-  margin: 0 auto;
-  min-height: 100vh;
+a {
+  color: var(--mint);
+  text-decoration: none;
+}
+a:hover {
+  color: #7edbbe;
+}
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+}
+input {
+  font: inherit;
+}
+input::placeholder {
+  color: var(--faint);
+}
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* 말풍선 꼬리 */
+.bubble-tail::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  bottom: 14px;
+  width: 12px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border-left: 1px solid rgba(255, 255, 255, 0.13);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.13);
+  transform: rotate(45deg);
+  backdrop-filter: blur(16px);
+}
+
+@keyframes hblink {
+  0%,
+  90%,
+  100% {
+    transform: scaleY(1);
+  }
+  94% {
+    transform: scaleY(0.08);
+  }
+}
+@keyframes hbob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2.5px);
+  }
+}
+@keyframes wob {
+  0%,
+  58% {
+    transform: rotate(0deg);
+  }
+  66% {
+    transform: rotate(-3.2deg);
+  }
+  74% {
+    transform: rotate(2.6deg);
+  }
+  82% {
+    transform: rotate(-1.8deg);
+  }
+  90% {
+    transform: rotate(1deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-3px);
+  }
+  55% {
+    transform: translateX(3px);
+  }
+  80% {
+    transform: translateX(-1.5px);
+  }
+}
+@keyframes jump {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  28% {
+    transform: translateY(-9px);
+  }
+  50% {
+    transform: translateY(0);
+  }
+  68% {
+    transform: translateY(-5px);
+  }
+  84% {
+    transform: translateY(0);
+  }
+}
+@keyframes popIn {
+  0% {
+    transform: translateY(-14px) scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: translateY(2px) scale(1.07);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes flyF {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(40px, 270px) scale(0.35);
+    opacity: 0;
+  }
+}
+@keyframes sheetUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes dimIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes ghostDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes ghostFade {
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001s !important;
+    transition-duration: 0.001s !important;
+  }
+  svg path,
+  svg line {
+    stroke-dashoffset: 0 !important;
+  }
+  svg g,
+  svg text {
+    opacity: 1 !important;
+  }
 }
