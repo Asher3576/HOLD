@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useHold } from './app/useHold'
 import { MONO } from './app/ui'
 import HoldieZone from './app/components/HoldieZone'
@@ -11,8 +12,25 @@ import ExtDemo from './app/components/ExtDemo'
 import { FruitSvg } from './app/components/svg'
 import type { HeroSpec } from './app/components/HoldieZone'
 
+/**
+ * 실서비스 셸.
+ * - 모바일: 풀스크린 앱 (프레임 없음, 세이프에어리어 대응)
+ * - 데스크톱: 중앙 앱 컬럼 (max 430px)
+ * - 크롬 확장 데모는 #ext 해시로만 접근 (시연용)
+ */
 export default function App() {
   const { s, actions: a, chartRef, portfolio, execPrice, mode, isReal, fruitsView, dexView } = useHold()
+
+  // #ext 해시 → 확장 데모 표면 (직접 진입 + 해시 변경 모두)
+  useEffect(() => {
+    const sync = () => {
+      if (window.location.hash === '#ext') a.goExt()
+    }
+    sync()
+    window.addEventListener('hashchange', sync)
+    return () => window.removeEventListener('hashchange', sync)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const tired = s.openCount > 5
   const vaultBusy = s.vaultPhase === 'dialing' || s.vaultPhase === 'open'
@@ -24,111 +42,97 @@ export default function App() {
       : { name: 'owl' }
   const reviewDone = s.rvStep === 2 && !!s.rvA2 && s.sheet !== 'review'
 
-  const tabCss = (on: boolean): React.CSSProperties => ({
-    padding: '7px 18px',
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 700,
-    ...(on
-      ? {
-          background: 'linear-gradient(180deg,#FF5A66,#E93D4C)',
-          color: '#FFFFFF',
-          boxShadow: '0 4px 12px rgba(250,59,74,0.3)',
-        }
-      : { color: '#99A1B3' }),
-  })
-
-  return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: 26,
-        // 모바일에서도 깨지지 않게 — 데스크톱 40px, 폰에서는 12px 까지 축소
-        padding: 'clamp(12px, 4vw, 40px) clamp(8px, 4vw, 40px) 56px',
-        background:
-          'radial-gradient(760px 520px at 18% 8%, rgba(250,59,74,0.1), transparent 65%), radial-gradient(700px 520px at 85% 80%, rgba(87,199,164,0.07), transparent 65%), #07080C',
-      }}
-    >
-      {/* 헤더: 워드마크 + 표면 탭 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        <div style={{ fontFamily: MONO, fontSize: 15, fontWeight: 800, letterSpacing: 5, color: '#F2F4F8' }}>
-          HOLD
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            gap: 4,
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 999,
-            padding: 4,
-            backdropFilter: 'blur(14px)',
-            WebkitBackdropFilter: 'blur(14px)',
-          }}
-        >
-          <button onClick={a.goWeb} style={tabCss(s.surf === 'web')}>
-            웹앱
-          </button>
-          <button onClick={a.goExt} style={tabCss(s.surf === 'ext')}>
-            크롬 확장
-          </button>
-        </div>
-        {(isReal || mode === 'guest') && (
+  // ─── 확장 데모 (#ext 전용 페이지) ────────────────────────────────────────
+  if (s.surf === 'ext') {
+    return (
+      <div
+        style={{
+          minHeight: '100dvh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 18,
+          padding: 'clamp(12px, 3vw, 32px)',
+          background:
+            'radial-gradient(760px 520px at 18% 8%, rgba(250,59,74,0.1), transparent 65%), #07080C',
+        }}
+      >
+        <div style={{ width: '100%', maxWidth: 960, display: 'flex', alignItems: 'center', gap: 14 }}>
           <button
-            onClick={a.signOut}
+            onClick={() => {
+              window.history.replaceState(null, '', window.location.pathname)
+              a.goWeb()
+            }}
             style={{
-              fontSize: 10.5,
+              fontSize: 12,
               fontWeight: 600,
               color: '#99A1B3',
               border: '1px solid rgba(255,255,255,0.15)',
               borderRadius: 999,
-              padding: '5px 11px',
+              padding: '7px 14px',
             }}
-            title={s.userEmail ?? '게스트'}
           >
-            {isReal ? '로그아웃' : '게스트 나가기'}
+            ← 앱으로 돌아가기
           </button>
-        )}
+          <span style={{ fontSize: 11, color: '#5A6170' }}>크롬 확장 데모 (시연용)</span>
+        </div>
+        <ExtDemo s={s} a={a} chartRef={chartRef} />
       </div>
+    )
+  }
 
-      {s.surf === 'web' ? (
-        <div
-          style={{
-            width: 'min(375px, 100%)',
-            height: 'min(812px, calc(100dvh - 120px))',
-            borderRadius: 28,
-            overflow: 'hidden',
-            position: 'relative',
-            background: '#0B0E14',
-            color: '#F2F4F8',
-            border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 40px 80px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.12)',
-          }}
-        >
-          {/* 블러 글로우 오브 */}
-          <div style={{ position: 'absolute', top: -60, left: -70, width: 300, height: 300, borderRadius: '50%', background: 'rgba(250,59,74,0.2)', filter: 'blur(80px)', pointerEvents: 'none' }} />
-          <div style={{ position: 'absolute', top: 300, right: -90, width: 280, height: 280, borderRadius: '50%', background: 'rgba(87,199,164,0.13)', filter: 'blur(85px)', pointerEvents: 'none' }} />
-          <div style={{ position: 'absolute', bottom: -80, left: 10, width: 300, height: 280, borderRadius: '50%', background: 'rgba(91,132,196,0.14)', filter: 'blur(90px)', pointerEvents: 'none' }} />
+  // ─── 앱 본체 ────────────────────────────────────────────────────────────
+  return (
+    <div
+      style={{
+        minHeight: '100dvh',
+        display: 'flex',
+        justifyContent: 'center',
+        background:
+          'radial-gradient(760px 520px at 18% 8%, rgba(250,59,74,0.08), transparent 65%), radial-gradient(700px 520px at 85% 80%, rgba(87,199,164,0.06), transparent 65%), #07080C',
+      }}
+    >
+      <div
+        style={{
+          position: 'relative',
+          width: 'min(430px, 100%)',
+          height: '100dvh',
+          overflow: 'hidden',
+          background: '#0B0E14',
+          color: '#F2F4F8',
+          boxShadow: '0 0 0 1px rgba(255,255,255,0.06), 0 24px 80px rgba(0,0,0,0.45)',
+        }}
+      >
+        {/* 블러 글로우 오브 */}
+        <div style={{ position: 'absolute', top: -60, left: -70, width: 300, height: 300, borderRadius: '50%', background: 'rgba(250,59,74,0.2)', filter: 'blur(80px)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', top: 300, right: -90, width: 280, height: 280, borderRadius: '50%', background: 'rgba(87,199,164,0.13)', filter: 'blur(85px)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', bottom: -80, left: 10, width: 300, height: 280, borderRadius: '50%', background: 'rgba(91,132,196,0.14)', filter: 'blur(90px)', pointerEvents: 'none' }} />
 
-          {mode === 'loading' && (
-            <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', fontSize: 12, color: '#7A8296' }}>
-              불러오는 중…
-            </div>
-          )}
+        {mode === 'loading' && (
+          <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', fontSize: 12, color: '#7A8296' }}>
+            불러오는 중…
+          </div>
+        )}
 
-          {mode === 'signedOut' && (
-            <LoginScreen busy={s.authBusy} onSignIn={a.signIn} onSignUp={a.signUp} onGuest={a.enterGuest} />
-          )}
+        {mode === 'signedOut' && (
+          <LoginScreen busy={s.authBusy} onSignIn={a.signIn} onSignUp={a.signUp} onGuest={a.enterGuest} />
+        )}
 
-          {(mode === 'guest' || mode === 'real') && (
-          <div style={{ position: 'absolute', inset: 0, overflowY: 'auto', padding: '28px 16px 130px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontFamily: MONO, fontSize: 12, fontWeight: 800, letterSpacing: 4, color: '#F2F4F8', opacity: 0.75 }}>
+        {(mode === 'guest' || mode === 'real') && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              overflowY: 'auto',
+              padding: 'calc(20px + env(safe-area-inset-top)) 16px calc(130px + env(safe-area-inset-bottom))',
+            }}
+          >
+            {/* 앱 헤더 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontFamily: MONO, fontSize: 13, fontWeight: 800, letterSpacing: 4, color: '#F2F4F8' }}>
                 HOLD
               </div>
+              <span style={{ flex: 1 }} />
               <div
                 style={{
                   fontSize: 10,
@@ -142,8 +146,22 @@ export default function App() {
                   WebkitBackdropFilter: 'blur(10px)',
                 }}
               >
-                결정 레이어 · 실거래 없음
+                실거래 없음
               </div>
+              <button
+                onClick={a.signOut}
+                title={s.userEmail ?? '게스트'}
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color: '#7A8296',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  borderRadius: 999,
+                  padding: '4px 10px',
+                }}
+              >
+                {isReal ? '로그아웃' : '게스트'}
+              </button>
             </div>
 
             <HoldieZone hero={hero} tired={tired} newsOpen={s.newsOpen} onToggleNews={a.toggleNews} />
@@ -179,76 +197,68 @@ export default function App() {
               dexOverride={dexView}
             />
           </div>
-          )}
+        )}
 
-          {(mode === 'guest' || mode === 'real') && (
-            <>
-              {/* 하단 고정: 복기 */}
-              <button
-                onClick={a.openReview}
-                style={{
-                  position: 'absolute',
-                  left: 16,
-                  right: 16,
-                  bottom: 26,
-                  zIndex: 20,
-                  height: 52,
-                  borderRadius: 16,
-                  background: 'linear-gradient(180deg,#FF5A66,#E93D4C)',
-                  color: '#FFFFFF',
-                  fontSize: 14,
-                  fontWeight: 700,
-                  boxShadow: '0 10px 28px rgba(250,59,74,0.35)',
-                }}
-              >
-                🎙 부엉이랑 3분 복기
-              </button>
-
-              <Sheets s={s} a={a} execPrice={execPrice} isReal={isReal} />
-
-              {/* 열매 플라잉 */}
-              {s.flyOn && (
-                <div style={{ position: 'absolute', left: '50%', top: '42%', zIndex: 60, pointerEvents: 'none', animation: 'flyF 0.9s ease-in forwards' }}>
-                  <FruitSvg kind="pend" size={44} />
-                </div>
-              )}
-            </>
-          )}
-
-          {/* 토스트 */}
-          {s.toast && (
-            <div
+        {(mode === 'guest' || mode === 'real') && (
+          <>
+            {/* 하단 고정: 복기 */}
+            <button
+              onClick={a.openReview}
               style={{
                 position: 'absolute',
-                left: 18,
-                right: 18,
-                bottom: 92,
-                zIndex: 50,
-                background: 'rgba(28,32,42,0.85)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                borderRadius: 14,
-                padding: '13px 16px',
-                fontSize: 13,
-                lineHeight: 1.55,
-                color: '#F2F4F8',
-                boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
-                pointerEvents: 'none',
-                fontVariantNumeric: 'tabular-nums',
-                backdropFilter: 'blur(18px)',
-                WebkitBackdropFilter: 'blur(18px)',
+                left: 16,
+                right: 16,
+                bottom: 'calc(18px + env(safe-area-inset-bottom))',
+                zIndex: 20,
+                height: 52,
+                borderRadius: 16,
+                background: 'linear-gradient(180deg,#FF5A66,#E93D4C)',
+                color: '#FFFFFF',
+                fontSize: 14,
+                fontWeight: 700,
+                boxShadow: '0 10px 28px rgba(250,59,74,0.35)',
               }}
             >
-              {s.toast}
-            </div>
-          )}
-        </div>
-      ) : (
-        <ExtDemo s={s} a={a} chartRef={chartRef} />
-      )}
+              🎙 부엉이랑 3분 복기
+            </button>
 
-      <div style={{ fontSize: 10.5, lineHeight: 1.7, color: '#6B7280', textAlign: 'center', maxWidth: 560 }}>
-        규칙 — 수익률 숫자는 금고 안에서만 · AI는 사실/조건문만 · 캐릭터는 비난하지 않음 · 손절 작동 =
-        보험이 일한 것
+            <Sheets s={s} a={a} execPrice={execPrice} isReal={isReal} />
+
+            {/* 열매 플라잉 */}
+            {s.flyOn && (
+              <div style={{ position: 'absolute', left: '50%', top: '42%', zIndex: 60, pointerEvents: 'none', animation: 'flyF 0.9s ease-in forwards' }}>
+                <FruitSvg kind="pend" size={44} />
+              </div>
+            )}
+          </>
+        )}
+
+        {/* 토스트 (모든 모드 — 로그인 실패 안내 포함) */}
+        {s.toast && (
+          <div
+            style={{
+              position: 'absolute',
+              left: 18,
+              right: 18,
+              bottom: 'calc(88px + env(safe-area-inset-bottom))',
+              zIndex: 50,
+              background: 'rgba(28,32,42,0.85)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: 14,
+              padding: '13px 16px',
+              fontSize: 13,
+              lineHeight: 1.55,
+              color: '#F2F4F8',
+              boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
+              pointerEvents: 'none',
+              fontVariantNumeric: 'tabular-nums',
+              backdropFilter: 'blur(18px)',
+              WebkitBackdropFilter: 'blur(18px)',
+            }}
+          >
+            {s.toast}
+          </div>
+        )}
       </div>
     </div>
   )
