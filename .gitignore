@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+*.local
+.DS_Store
+
+# Supabase CLI local state
+supabase/.temp/
+supabase/.branches/
+
+# 시크릿 키는 절대 커밋 금지 (.env는 퍼블리셔블 키만 담으므로 커밋함)
+.env.secret
+.env.*.secret

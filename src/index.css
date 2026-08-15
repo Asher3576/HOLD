@@ -1,0 +1,35 @@
+/* HOLD 팔레트 — 홀디 게이미피케이션 톤 */
+:root {
+  --bg: #edeae3; /* 배경 (웜 그레이지) */
+  --card: #faf8f3; /* 카드 (아이보리) */
+  --ink: #1c1b18; /* 본문 텍스트 */
+  --primary: #1f5f5b; /* 딥 그린 — 홀디/진행 */
+  --egg: #f2e8d8; /* 알 크림 */
+  --danger: #b4544a; /* 손절/경고 (수익률 색이 아님) */
+  --info: #3e6491; /* 정보 블루 */
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family:
+    'Pretendard',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    'Noto Sans KR',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100vh;
+}
