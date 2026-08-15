@@ -1,4 +1,4 @@
-import type { HeldRecord } from '../lib/types'
+import type { HeldRecord } from '@hold/shared'
 
 /**
  * 도감 — 부화(완주) 기록과 열매(참은 기록) 수집 (스텁).

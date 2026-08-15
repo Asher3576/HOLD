@@ -1,4 +1,4 @@
-import type { HeldRecord, PastSell, Plan } from '../lib/types'
+import type { HeldRecord, PastSell, Plan } from '@hold/shared'
 
 /** Phase A 목데이터 — Supabase 연결 전 UI 개발용 */
 

@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "HOLD — 홀디",
+  "version": "0.1.0",
+  "description": "보고 있는 차트 위에서, 계획을 지키게 돕는 수호자",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "홀디 부르기"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["activeTab", "scripting", "storage"]
+}

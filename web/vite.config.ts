@@ -10,5 +10,6 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/__tests__/**/*.test.ts'],
+    passWithNoTests: true, // 순수 로직 테스트는 shared 패키지에 있음
   },
 })

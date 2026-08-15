@@ -1,4 +1,4 @@
-import type { PastSell } from '../lib/types'
+import type { PastSell } from '@hold/shared'
 
 /**
  * 매도 개입 — "팔고 싶다"를 눌렀을 때 (스텁).

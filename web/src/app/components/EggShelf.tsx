@@ -1,5 +1,4 @@
-import type { Plan } from '../lib/types'
-import { priceProgress, shouldBlur } from '../lib/planMath'
+import { priceProgress, shouldBlur, type Plan } from '@hold/shared'
 
 /**
  * 알 선반 — 품는 중인 계획(알) 목록 (스텁).
