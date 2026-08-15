@@ -7,7 +7,7 @@ await build({
   entryPoints: {
     background: 'src/background.ts',
     content: 'src/content/index.ts',
-    popup: 'src/popup/popup.ts',
+    sidepanel: 'src/sidepanel/sidepanel.ts',
   },
   bundle: true,
   format: 'iife',
@@ -15,7 +15,7 @@ await build({
   target: 'chrome120',
 })
 
-cpSync('src/popup/popup.html', 'dist/popup.html')
+cpSync('src/sidepanel/sidepanel.html', 'dist/sidepanel.html')
 cpSync('manifest.json', 'dist/manifest.json')
 
 console.log('extension built → dist/ (chrome://extensions → 압축해제된 확장 프로그램 로드)')
