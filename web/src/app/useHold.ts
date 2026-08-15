@@ -5,7 +5,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import type { Egg, Fruit, PlanMode, SheetKind, VaultPhase } from './model'
-import { DIAL_BASE, DIAL_STEP, SEED_CASH, SELL_COUNTDOWN, SYMBOL_CODE } from './model'
+import { codeFor, DIAL_BASE, DIAL_STEP, SEED_CASH, SELL_COUNTDOWN } from './model'
 import { initialEggs, initialHatchedMap } from './mock/design'
 import { ENTRY } from './mock/prices'
 import { fetchQuotes, type Quote } from './lib/api'
@@ -183,10 +183,19 @@ export function useHold() {
 
   /** 종목명 기준 모의 체결가: 실시세 → 목 진입가 → 10,000원 */
   const execPrice = (name: string): number => {
-    const code = SYMBOL_CODE[name]
+    const code = codeFor(name)
     const q = code ? sRef.current.quotes[code] : undefined
     if (q && Number.isFinite(q.price) && q.price > 0) return q.price
     return ENTRY[name] ?? 10_000
+  }
+
+  /** 아직 없는 종목 시세를 온디맨드 로드 (알 만들기에서 종목명 입력 시) */
+  const ensureQuote = (name: string) => {
+    const code = codeFor(name)
+    if (!code || sRef.current.quotes[code]) return
+    fetchQuotes([code]).then((q) => {
+      if (q && q[code]) set((st) => ({ quotes: { ...st.quotes, ...q }, live: true }))
+    })
   }
   /** 알의 현재 평가 단가 */
   const eggPrice = (g: Egg): number => g.price ?? g.entry ?? ENTRY[g.name] ?? 0
@@ -330,7 +339,7 @@ export function useHold() {
         name,
         qty: `${qtyN}주`,
         qtyN,
-        code: SYMBOL_CODE[name],
+        code: codeFor(name),
         entry: entryPrice,
         price: entryPrice,
         stop: st.pStop,
@@ -393,6 +402,13 @@ export function useHold() {
       celebrate()
       showToast(`${name} ${st.pQty}주 모의 매수 체결 · ${fmtWon(cost)} — 새 알을 선반에 놓았어.`)
     }
+  }
+
+  /** 보험 작동(shield) 알 선반 정리 — 기록은 도감에 남는다 */
+  const dismissShield = (id: string) => {
+    const egg = sRef.current.eggs.find((g) => g.id === id)
+    set((prev) => ({ eggs: prev.eggs.filter((g) => g.id !== id), sheet: null }))
+    showToast(`${egg?.name ?? ''} 선반에서 정리했어 — 보험 기록은 도감에 남아있어.`)
   }
 
   // ─── 만기 알 ───────────────────────────────────────────────────────────
@@ -520,6 +536,8 @@ export function useHold() {
       submitPlan,
       expiryRenew,
       expirySend,
+      dismissShield,
+      ensureQuote,
       rvPick1,
       rvPick2,
       goWeb,

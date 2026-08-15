@@ -73,3 +73,12 @@ export const SYMBOL_CODE: Record<string, string> = {
   카카오: '035720',
   LG에너지솔루션: '373220',
 }
+
+/** 시세 코드 해석: 알려진 한국 종목명 → 6자리 코드, 미국 티커(영대문자)는 그대로 */
+export function codeFor(name: string): string | undefined {
+  const n = name.trim()
+  if (!n) return undefined
+  if (SYMBOL_CODE[n]) return SYMBOL_CODE[n]
+  if (/^[A-Z][A-Z.]{0,5}$/.test(n)) return n // TSLA, AAPL 등
+  return undefined
+}

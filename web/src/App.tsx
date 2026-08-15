@@ -40,7 +40,8 @@ export default function App() {
         flexDirection: 'column',
         alignItems: 'center',
         gap: 26,
-        padding: '40px 40px 56px',
+        // 모바일에서도 깨지지 않게 — 데스크톱 40px, 폰에서는 12px 까지 축소
+        padding: 'clamp(12px, 4vw, 40px) clamp(8px, 4vw, 40px) 56px',
         background:
           'radial-gradient(760px 520px at 18% 8%, rgba(250,59,74,0.1), transparent 65%), radial-gradient(700px 520px at 85% 80%, rgba(87,199,164,0.07), transparent 65%), #07080C',
       }}
@@ -84,9 +85,8 @@ export default function App() {
       {s.surf === 'web' ? (
         <div
           style={{
-            width: 375,
-            height: 812,
-            maxHeight: 'calc(100vh - 40px)',
+            width: 'min(375px, 100%)',
+            height: 'min(812px, calc(100dvh - 120px))',
             borderRadius: 28,
             overflow: 'hidden',
             position: 'relative',

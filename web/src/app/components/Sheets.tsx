@@ -145,9 +145,14 @@ function DetailSheet({ s, a }: { s: HoldState; a: HoldActions }) {
               <span style={{ color: '#57C7A4', fontWeight: 700 }}>보험이 일한 거야</span>.
             </span>
           </div>
-          <button onClick={a.closeSheet} style={{ marginTop: 14, width: '100%', height: 50, borderRadius: 14, fontSize: 13.5, ...redCta }}>
-            확인
-          </button>
+          <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+            <button onClick={a.closeSheet} style={{ flex: 1, height: 50, borderRadius: 14, fontSize: 13.5, ...redCta }}>
+              확인
+            </button>
+            <button onClick={() => a.dismissShield(d.id)} style={{ flex: 1, height: 50, borderRadius: 14, fontSize: 13.5, ...ghostBtn }}>
+              선반에서 정리
+            </button>
+          </div>
         </>
       )}
 
@@ -156,12 +161,17 @@ function DetailSheet({ s, a }: { s: HoldState; a: HoldActions }) {
           <div style={{ marginTop: 14, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: 14, fontSize: 13, lineHeight: 1.6 }}>
             계획 없이 따라온 애야. 계획을 붙여줄래?
           </div>
-          <button
-            onClick={() => a.openPlan('wild', d.id)}
-            style={{ marginTop: 14, width: '100%', height: 50, borderRadius: 14, fontSize: 13.5, ...redCta }}
-          >
-            계획 붙이기
-          </button>
+          <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+            <button
+              onClick={() => a.openPlan('wild', d.id)}
+              style={{ flex: 1, height: 50, borderRadius: 14, fontSize: 13.5, ...redCta }}
+            >
+              계획 붙이기
+            </button>
+            <button onClick={a.openSell} style={{ flex: 1, height: 50, borderRadius: 14, fontSize: 13.5, ...ghostBtn }}>
+              팔고 싶어요
+            </button>
+          </div>
           <button onClick={a.closeSheet} style={{ display: 'block', margin: '12px auto 0', fontSize: 12, color: '#7A8296' }}>
             나중에
           </button>
@@ -252,12 +262,14 @@ function SellSheet({ s, a }: { s: HoldState; a: HoldActions }) {
         </div>
       </div>
 
-      {/* 과거의 나 */}
-      <div style={{ marginTop: 14, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: 14 }}>
-        <div style={{ fontSize: 11, color: '#7A8296' }}>{d.memoL}</div>
-        <div style={{ marginTop: 6, fontSize: 14, lineHeight: 1.55 }}>"{d.memoQ || d.reason}"</div>
-        <div style={{ marginTop: 8, fontSize: 12.5, color: '#99A1B3' }}>이 이유, 아직 살아있어?</div>
-      </div>
+      {/* 과거의 나 — 계획 없는 야생알은 기록이 없으므로 생략 */}
+      {(d.memoQ || d.reason) && (
+        <div style={{ marginTop: 14, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: 14 }}>
+          <div style={{ fontSize: 11, color: '#7A8296' }}>{d.memoL}</div>
+          <div style={{ marginTop: 6, fontSize: 14, lineHeight: 1.55 }}>"{d.memoQ || d.reason}"</div>
+          <div style={{ marginTop: 8, fontSize: 12.5, color: '#99A1B3' }}>이 이유, 아직 살아있어?</div>
+        </div>
+      )}
 
       {/* 과거 매도 12건 */}
       <div style={{ marginTop: 12, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: 14 }}>
@@ -380,15 +392,24 @@ function PlanSheet({
   a: HoldActions
   execPrice: (name: string) => number
 }) {
-  const pComplete = s.pReason.trim().length > 0
   const aiDecided = s.pAi !== null
   const title =
     s.pMode === 'wild' ? 'NAVER 계획 붙이기' : s.pMode === 'renew' ? '카카오 사육 계획' : '새 알 품기'
   // 모의 매수 견적 (new 모드만 — wild/renew 는 보유분에 계획만 붙임)
   const isBuy = s.pMode === 'new'
+  const nameOk = !isBuy || s.pName.trim().length > 0
+  const pComplete = s.pReason.trim().length > 0 && nameOk
   const buyPrice = isBuy ? execPrice(s.pName.trim() || '새 종목') : 0
   const buyCost = buyPrice * s.pQty
   const insufficient = isBuy && buyCost > s.cash
+
+  // 종목명이 정해지면 해당 시세를 온디맨드 로드 (TSLA 등 미보유 종목 포함)
+  const pName = s.pName
+  useEffect(() => {
+    if (!isBuy || !pName.trim()) return
+    const t = setTimeout(() => a.ensureQuote(pName), 400)
+    return () => clearTimeout(t)
+  }, [isBuy, pName, a])
   const stepper = (
     label: string,
     valueLabel: string,
@@ -426,22 +447,43 @@ function PlanSheet({
         계획이 곧 알이야 — 4개만 정하면 돼 · 이유가 비어 있으면 만들 수 없어
       </div>
       {s.pMode === 'new' && (
-        <input
-          value={s.pName}
-          onChange={(e) => a.setPName(e.target.value)}
-          placeholder="종목명"
-          style={{
-            marginTop: 14,
-            width: '100%',
-            background: 'rgba(255,255,255,0.07)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            outline: 'none',
-            borderRadius: 12,
-            padding: '12px 14px',
-            color: '#F2F4F8',
-            fontSize: 14,
-          }}
-        />
+        <>
+          <input
+            value={s.pName}
+            onChange={(e) => a.setPName(e.target.value)}
+            placeholder="종목명 (필수)"
+            style={{
+              marginTop: 14,
+              width: '100%',
+              background: 'rgba(255,255,255,0.07)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              outline: 'none',
+              borderRadius: 12,
+              padding: '12px 14px',
+              color: '#F2F4F8',
+              fontSize: 14,
+            }}
+          />
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            {['삼성전자', 'SK하이닉스', 'NAVER', '카카오', 'LG에너지솔루션', 'TSLA'].map((n) => (
+              <button
+                key={n}
+                onClick={() => a.setPName(n)}
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: s.pName === n ? '#F2F4F8' : '#99A1B3',
+                  background: s.pName === n ? 'rgba(250,59,74,0.18)' : 'rgba(255,255,255,0.06)',
+                  border: `1px solid ${s.pName === n ? 'rgba(250,59,74,0.45)' : 'rgba(255,255,255,0.12)'}`,
+                  borderRadius: 999,
+                  padding: '5px 11px',
+                }}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </>
       )}
       <div style={{ marginTop: 12, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: '2px 14px' }}>
         {stepper('손절선', `−${s.pStop}%`, () => a.adj('pStop', 1, 1, 15), () => a.adj('pStop', -1, 1, 15))}
