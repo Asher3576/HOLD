@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import Holdie from './holdie/Holdie'
+import Mascot from './insight/Mascot'
 import { ghostBtn, redCta } from '../ui'
 
 /** 로그인/회원가입 — 폰 셸 안에 표시. 게스트(목데이터 데모) 입장도 제공. */
@@ -42,14 +42,14 @@ export default function LoginScreen({
       }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <Holdie pose="idle" size={96} />
+        <Mascot name="bull" size={128} doodles doodleColor="#4A5568" anim="bob" />
         <div style={{ marginTop: 14, fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", fontSize: 18, fontWeight: 800, letterSpacing: 6 }}>
           HOLD
         </div>
         <div style={{ marginTop: 6, fontSize: 12.5, color: '#99A1B3', textAlign: 'center', lineHeight: 1.6 }}>
           수익률 대신, 계획대로 가고 있는지만.
           <br />
-          홀디가 네 계획을 지켜줄게.
+          인사이트 프렌즈가 네 계획을 지켜줄게.
         </div>
       </div>
 

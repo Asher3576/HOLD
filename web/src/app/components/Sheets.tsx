@@ -1,4 +1,4 @@
-/** 바텀시트 4종 — 알 상세 / 매도 개입 / 새 알 품기 / 홀디랑 복기 */
+/** 바텀시트 4종 — 알 상세 / 매도 개입 / 새 알 품기 / 부엉이랑 복기 */
 import { useEffect, useMemo, useState } from 'react'
 import type { HoldState, HoldActions } from '../useHold'
 import { sellRecData } from '../mock/design'
@@ -6,7 +6,7 @@ import { eggChart, type PricePoint } from '../mock/prices'
 import { fetchDailyCloses } from '../lib/api'
 import { reviewTags } from '../review'
 import { fmtWon, ghostBtn, monoNum, redCta } from '../ui'
-import Holdie from './holdie/Holdie'
+import Mascot from './insight/Mascot'
 import PriceChart, { type PlanLine } from './PriceChart'
 import { ShieldIcon } from './svg'
 import { ReviewChips } from './ReviewRecordCard'
@@ -257,10 +257,10 @@ function SellSheet({ s, a, isReal }: { s: HoldState; a: HoldActions; isReal: boo
   return (
     <div>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-        <Holdie pose="guard" size={66} />
+        <Mascot name="bull" size={68} />
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 16, fontWeight: 700 }}>{d.name} — 팔기 전에</div>
-          <div style={{ marginTop: 3, fontSize: 11, color: '#7A8296' }}>홀디가 알을 지키는 중</div>
+          <div style={{ marginTop: 3, fontSize: 11, color: '#7A8296' }}>황소가 알을 지키는 중</div>
         </div>
       </div>
 
@@ -556,7 +556,7 @@ function PlanSheet({
         <>
           <div style={{ marginTop: 10, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: 14 }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: '#7A8296' }}>
-              홀디의 계획 검증
+              부엉이의 계획 검증
             </div>
             <div style={{ marginTop: 9, fontSize: 12.5, lineHeight: 1.65, color: '#D6DAE3' }}>
               최근 20일 평균 변동폭이{' '}
@@ -636,7 +636,7 @@ function ReviewSheet({ s, a }: { s: HoldState; a: HoldActions }) {
   const holdieBubble = (text: string) => (
     <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
       <div style={{ flex: 'none', marginTop: 2 }}>
-        <Holdie pose="chat" size={30} animate={false} />
+        <Mascot name="owl" variant="head" size={30} />
       </div>
       <div
         style={{
@@ -688,7 +688,7 @@ function ReviewSheet({ s, a }: { s: HoldState; a: HoldActions }) {
   )
   return (
     <div>
-      <div style={{ fontSize: 16, fontWeight: 700 }}>홀디랑 3분 복기</div>
+      <div style={{ fontSize: 16, fontWeight: 700 }}>부엉이랑 3분 복기</div>
       <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {holdieBubble('오늘 SK하이닉스 알을 18일 일찍 꺼냈네. 그때 무슨 생각이었어?')}
         {s.rvStep >= 1 && (

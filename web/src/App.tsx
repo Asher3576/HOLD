@@ -9,14 +9,19 @@ import LoginScreen from './app/components/LoginScreen'
 import Sheets from './app/components/Sheets'
 import ExtDemo from './app/components/ExtDemo'
 import { FruitSvg } from './app/components/svg'
-import type { HoldiePose } from './app/components/holdie/Holdie'
+import type { HeroSpec } from './app/components/HoldieZone'
 
 export default function App() {
   const { s, actions: a, chartRef, portfolio, execPrice, mode, isReal, fruitsView, dexView } = useHold()
 
   const tired = s.openCount > 5
   const vaultBusy = s.vaultPhase === 'dialing' || s.vaultPhase === 'open'
-  const pose: HoldiePose = s.celebrating ? 'celebrate' : vaultBusy ? 'peek' : tired ? 'tired' : 'idle'
+  // 히어로: 축하=황소(신남·점프), 금고 열람 중/피곤=곰(걱정), 평상시=부엉이(분석가)
+  const hero: HeroSpec = s.celebrating
+    ? { name: 'bull', mood: 'excited', anim: 'jump' }
+    : vaultBusy || tired
+      ? { name: 'bear' }
+      : { name: 'owl' }
   const reviewDone = s.rvStep === 2 && !!s.rvA2 && s.sheet !== 'review'
 
   const tabCss = (on: boolean): React.CSSProperties => ({
@@ -47,16 +52,6 @@ export default function App() {
           'radial-gradient(760px 520px at 18% 8%, rgba(250,59,74,0.1), transparent 65%), radial-gradient(700px 520px at 85% 80%, rgba(87,199,164,0.07), transparent 65%), #07080C',
       }}
     >
-      {/* 손그림 질감 필터 (홀디 전역 참조) */}
-      <svg width="0" height="0" style={{ position: 'absolute' }}>
-        <defs>
-          <filter id="fz" x="-25%" y="-25%" width="150%" height="150%">
-            <feTurbulence type="fractalNoise" baseFrequency="0.12" numOctaves="2" seed="7" result="n" />
-            <feDisplacementMap in="SourceGraphic" in2="n" scale="8" />
-          </filter>
-        </defs>
-      </svg>
-
       {/* 헤더: 워드마크 + 표면 탭 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         <div style={{ fontFamily: MONO, fontSize: 15, fontWeight: 800, letterSpacing: 5, color: '#F2F4F8' }}>
@@ -151,7 +146,7 @@ export default function App() {
               </div>
             </div>
 
-            <HoldieZone pose={pose} tired={tired} newsOpen={s.newsOpen} onToggleNews={a.toggleNews} />
+            <HoldieZone hero={hero} tired={tired} newsOpen={s.newsOpen} onToggleNews={a.toggleNews} />
 
             <VaultCard
               phase={s.vaultPhase}
@@ -206,7 +201,7 @@ export default function App() {
                   boxShadow: '0 10px 28px rgba(250,59,74,0.35)',
                 }}
               >
-                🎙 홀디랑 3분 복기
+                🎙 부엉이랑 3분 복기
               </button>
 
               <Sheets s={s} a={a} execPrice={execPrice} isReal={isReal} />
@@ -252,7 +247,7 @@ export default function App() {
       )}
 
       <div style={{ fontSize: 10.5, lineHeight: 1.7, color: '#6B7280', textAlign: 'center', maxWidth: 560 }}>
-        규칙 — 수익률 숫자는 금고 안에서만 · AI는 사실/조건문만 · 홀디는 비난하지 않음 · 손절 작동 =
+        규칙 — 수익률 숫자는 금고 안에서만 · AI는 사실/조건문만 · 캐릭터는 비난하지 않음 · 손절 작동 =
         보험이 일한 것
       </div>
     </div>

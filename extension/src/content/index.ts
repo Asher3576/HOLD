@@ -25,7 +25,7 @@ function ensureOverlayRoot(): HTMLDivElement {
   return root
 }
 
-/** 데모: 화면 중앙에 홀디의 저항선 하나를 그어본다 (Ext-1에서 실데이터로 대체) */
+/** 데모: 화면 중앙에 프렌즈의 저항선 하나를 그어본다 (Ext-1에서 실데이터로 대체) */
 function drawDemoLine() {
   const root = ensureOverlayRoot()
   root.innerHTML = ''
@@ -38,7 +38,7 @@ function drawDemoLine() {
     borderTop: '2px dashed #1F5F5B',
   })
   const label = document.createElement('span')
-  label.textContent = '홀디: 여기가 저항이에요 (데모)'
+  label.textContent = '프렌즈: 여기가 저항이에요 (데모)'
   Object.assign(label.style, {
     position: 'absolute',
     right: '8px',

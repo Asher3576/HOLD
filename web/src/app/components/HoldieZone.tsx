@@ -1,14 +1,20 @@
-import Holdie, { type HoldiePose } from './holdie/Holdie'
+import Mascot, { type CharName } from './insight/Mascot'
 import { newsItems } from '../mock/design'
 
-/** 홀디 존 — 홀디 + 말풍선(논지 레이더) + 뉴스 14건 펼침 */
+export interface HeroSpec {
+  name: CharName
+  mood?: 'calm' | 'excited'
+  anim?: 'bob' | 'jump'
+}
+
+/** 히어로 존 — 인사이트 프렌즈 + 말풍선(논지 레이더) + 뉴스 14건 펼침 */
 export default function HoldieZone({
-  pose,
+  hero,
   tired,
   newsOpen,
   onToggleNews,
 }: {
-  pose: HoldiePose
+  hero: HeroSpec
   tired: boolean
   newsOpen: boolean
   onToggleNews: () => void
@@ -19,8 +25,8 @@ export default function HoldieZone({
   return (
     <div style={{ marginTop: 18 }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-        <div style={{ flex: 'none', width: 108 }}>
-          <Holdie pose={pose} size={108} />
+        <div style={{ flex: 'none', width: 104 }}>
+          <Mascot name={hero.name} mood={hero.mood} size={112} anim={hero.anim ?? 'bob'} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <button

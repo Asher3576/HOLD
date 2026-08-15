@@ -1,13 +1,13 @@
 /**
  * 크롬 확장 데모 — 가짜 차트 사이트(tradechart.example/TSLA) 위 HOLD 오버레이 시뮬레이션.
- * 시퀀스: 홀디 부르기 → 지지/저항 선 → AI 브리핑 → 손익비 코치(핸들 드래그) → 현장 개입.
+ * 시퀀스: 프렌즈 부르기 → 지지/저항 선 → AI 브리핑 → 손익비 코치(핸들 드래그) → 현장 개입.
  */
 import type { RefObject } from 'react'
 import type { HoldState, HoldActions } from '../useHold'
 import { chartCloses, chartVolH } from '../mock/design'
 import { p2y } from '../ext/chartMath'
 import { monoNum, MONO, redCta } from '../ui'
-import Holdie, { HoldieExtPeek, HoldieIcon } from './holdie/Holdie'
+import Mascot from './insight/Mascot'
 
 // 캔들 지오메트리 (정적 — 모듈에서 1회 계산)
 const N = chartCloses.length
@@ -84,7 +84,7 @@ export default function ExtDemo({
           </span>
           <span style={{ flex: 1 }} />
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(250,59,74,0.12)', border: '1px solid rgba(250,59,74,0.3)', borderRadius: 8, padding: '4px 9px' }}>
-            <HoldieIcon size={16} />
+            <Mascot name="bull" variant="head" size={16} />
             <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 800, letterSpacing: 1, color: '#FF8A93' }}>HOLD</span>
           </span>
         </div>
@@ -185,10 +185,10 @@ export default function ExtDemo({
                   </div>
                 ))}
 
-              {/* 홀디 현장 개입 */}
+              {/* 곰 현장 개입 */}
               {s.extStep >= 4 && (
                 <div style={{ position: 'absolute', left: 12, bottom: 10, display: 'flex', alignItems: 'flex-end', gap: 8, animation: 'popIn 0.5s ease' }}>
-                  <HoldieExtPeek size={52} />
+                  <Mascot name="bear" variant="head" size={52} />
                   <div
                     style={{
                       background: 'rgba(28,32,42,0.9)',
@@ -217,7 +217,7 @@ export default function ExtDemo({
             <div style={panelGlass}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ flex: 'none' }}>
-                  <Holdie pose="chat" size={36} animate={false} />
+                  <Mascot name="owl" variant="head" size={36} />
                 </div>
                 <span>
                   <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: '#F2F4F8' }}>HOLD 확장</span>
@@ -226,12 +226,12 @@ export default function ExtDemo({
               </div>
               {s.extStep === 0 ? (
                 <button onClick={a.extCall} style={{ marginTop: 12, width: '100%', height: 42, borderRadius: 11, fontSize: 12.5, ...redCta }}>
-                  이 차트에 홀디 부르기
+                  이 차트에 프렌즈 부르기
                 </button>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
                   <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#57C7A4', boxShadow: '0 0 8px rgba(87,199,164,0.7)' }} />
-                  <span style={{ flex: 1, fontSize: 11.5, color: '#57C7A4', fontWeight: 600 }}>홀디 작동 중</span>
+                  <span style={{ flex: 1, fontSize: 11.5, color: '#57C7A4', fontWeight: 600 }}>프렌즈 작동 중</span>
                   <button onClick={a.extReplay} style={{ fontSize: 10.5, fontWeight: 600, color: '#99A1B3', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 999, padding: '5px 10px' }}>
                     다시 재생
                   </button>
@@ -279,7 +279,7 @@ export default function ExtDemo({
                 {rrWarn && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, background: 'rgba(250,59,74,0.1)', border: '1px solid rgba(250,59,74,0.3)', borderRadius: 10, padding: '8px 10px' }}>
                     <div style={{ flex: 'none' }}>
-                      <Holdie pose="surprised" size={26} animate={false} />
+                      <Mascot name="bear" variant="head" size={26} />
                     </div>
                     <span style={{ fontSize: 11.5, fontWeight: 600, color: '#FF8A93' }}>
                       "잃을 폭이 벌 폭보다 커요"

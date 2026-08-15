@@ -1,7 +1,7 @@
 import type { Egg } from '../model'
 import { glass, monoNum, RED_GRAD } from '../ui'
 import { ShelfEgg, ShieldIcon } from './svg'
-import { HoldieMiniPeek } from './holdie/Holdie'
+import Mascot from './insight/Mascot'
 
 /** 알 선반 — 5행. 게이지는 손절선 0 ~ 익절선 100, 숫자 없음. 85%+ 블러. */
 export default function ShelfCard({
@@ -154,7 +154,7 @@ export default function ShelfCard({
                 )}
                 {near && (
                   <div style={{ marginTop: 9, display: 'flex', alignItems: 'center', gap: 7 }}>
-                    <HoldieMiniPeek size={22} />
+                    <Mascot name="bear" variant="head" size={22} />
                     <span style={{ fontSize: 11.5, fontWeight: 600, color: '#57C7A4' }}>
                       "익절선 근처예요. 계획을 믿어요"
                     </span>
