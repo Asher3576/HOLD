@@ -1,29 +1,35 @@
 import type { Fruit } from '../model'
-import { baseFruits } from '../mock/design'
 import { glass, monoNum } from '../ui'
 import { CollectionCreature, FruitSvg } from './svg'
+
+export type DexKind = 'ss' | 'hd' | 'kia' | 'posco' | 'kakao'
+
+const GUEST_DEX: Array<{ kind: DexKind; name: string; lv: number }> = [
+  { kind: 'ss', name: '삼성전자', lv: 2 },
+  { kind: 'hd', name: '현대차', lv: 1 },
+  { kind: 'kia', name: '기아', lv: 1 },
+  { kind: 'posco', name: 'POSCO', lv: 1 },
+]
 
 /** 컬렉션 — 부화 도감 + 열매 저장고 + 반사실 곡선 */
 export default function CollectionCards({
   hatchN,
   hatchRate,
   hatch5,
-  fruitsExtra,
+  fruits,
   fruitTotal,
+  dexOverride,
 }: {
   hatchN: number
   hatchRate: number
   hatch5: boolean
-  fruitsExtra: Fruit[]
+  fruits: Fruit[]
   fruitTotal: number
+  /** real 모드: DB 부화 이력으로 도감 구성. null 이면 게스트 고정 도감 */
+  dexOverride: Array<{ kind: DexKind; name: string; lv: number }> | null
 }) {
-  const fruits = [...fruitsExtra, ...baseFruits]
-  const dex: Array<{ kind: 'ss' | 'hd' | 'kia' | 'posco'; name: string; lv: number }> = [
-    { kind: 'ss', name: '삼성전자', lv: 2 },
-    { kind: 'hd', name: '현대차', lv: 1 },
-    { kind: 'kia', name: '기아', lv: 1 },
-    { kind: 'posco', name: 'POSCO', lv: 1 },
-  ]
+  const dex = dexOverride ?? GUEST_DEX
+  const isGuestDex = dexOverride === null
   return (
     <div style={{ marginTop: 26 }}>
       <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: '#7A8296' }}>컬렉션</div>
@@ -36,9 +42,14 @@ export default function CollectionCards({
             부화 {hatchN}마리 · 완주율 {hatchRate}%
           </span>
         </div>
+        {dex.length === 0 && !hatch5 && (
+          <div style={{ marginTop: 12, fontSize: 11.5, lineHeight: 1.6, color: '#99A1B3' }}>
+            아직 부화한 알이 없어 — 계획을 끝까지 완주하면 첫 생물이 태어나.
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
           {dex.map((c) => (
-            <div key={c.kind} style={{ width: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <div key={c.name} style={{ width: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
               <CollectionCreature kind={c.kind} />
               <span style={{ fontSize: 9, lineHeight: 1.35, color: '#99A1B3', textAlign: 'center' }}>
                 {c.name}
@@ -47,7 +58,7 @@ export default function CollectionCards({
               </span>
             </div>
           ))}
-          {hatch5 && (
+          {isGuestDex && hatch5 && (
             <div
               style={{
                 width: 56,
@@ -79,6 +90,11 @@ export default function CollectionCards({
           <span style={{ fontSize: 13, fontWeight: 700 }}>열매 저장고</span>
           <span style={{ ...monoNum, fontSize: 11, color: '#7A8296' }}>총 {fruitTotal}개</span>
         </div>
+        {fruits.length === 0 && (
+          <div style={{ marginTop: 12, fontSize: 11.5, lineHeight: 1.6, color: '#99A1B3' }}>
+            아직 열매가 없어 — 팔고 싶은 순간을 참으면 여기 저장돼.
+          </div>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 12 }}>
           {fruits.map((f, i) => (
             <div

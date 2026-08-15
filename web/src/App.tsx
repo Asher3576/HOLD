@@ -5,13 +5,14 @@ import VaultCard from './app/components/VaultCard'
 import ShelfCard from './app/components/ShelfCard'
 import ReviewRecordCard from './app/components/ReviewRecordCard'
 import CollectionCards from './app/components/CollectionCards'
+import LoginScreen from './app/components/LoginScreen'
 import Sheets from './app/components/Sheets'
 import ExtDemo from './app/components/ExtDemo'
 import { FruitSvg } from './app/components/svg'
 import type { HoldiePose } from './app/components/holdie/Holdie'
 
 export default function App() {
-  const { s, actions: a, chartRef, portfolio, execPrice } = useHold()
+  const { s, actions: a, chartRef, portfolio, execPrice, mode, isReal, fruitsView, dexView } = useHold()
 
   const tired = s.openCount > 5
   const vaultBusy = s.vaultPhase === 'dialing' || s.vaultPhase === 'open'
@@ -80,6 +81,22 @@ export default function App() {
             크롬 확장
           </button>
         </div>
+        {(isReal || mode === 'guest') && (
+          <button
+            onClick={a.signOut}
+            style={{
+              fontSize: 10.5,
+              fontWeight: 600,
+              color: '#99A1B3',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: 999,
+              padding: '5px 11px',
+            }}
+            title={s.userEmail ?? '게스트'}
+          >
+            {isReal ? '로그아웃' : '게스트 나가기'}
+          </button>
+        )}
       </div>
 
       {s.surf === 'web' ? (
@@ -101,6 +118,17 @@ export default function App() {
           <div style={{ position: 'absolute', top: 300, right: -90, width: 280, height: 280, borderRadius: '50%', background: 'rgba(87,199,164,0.13)', filter: 'blur(85px)', pointerEvents: 'none' }} />
           <div style={{ position: 'absolute', bottom: -80, left: 10, width: 300, height: 280, borderRadius: '50%', background: 'rgba(91,132,196,0.14)', filter: 'blur(90px)', pointerEvents: 'none' }} />
 
+          {mode === 'loading' && (
+            <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', fontSize: 12, color: '#7A8296' }}>
+              불러오는 중…
+            </div>
+          )}
+
+          {mode === 'signedOut' && (
+            <LoginScreen busy={s.authBusy} onSignIn={a.signIn} onSignUp={a.signUp} onGuest={a.enterGuest} />
+          )}
+
+          {(mode === 'guest' || mode === 'real') && (
           <div style={{ position: 'absolute', inset: 0, overflowY: 'auto', padding: '28px 16px 130px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ fontFamily: MONO, fontSize: 12, fontWeight: 800, letterSpacing: 4, color: '#F2F4F8', opacity: 0.75 }}>
@@ -151,39 +179,45 @@ export default function App() {
               hatchN={s.hatchN}
               hatchRate={s.hatchRate}
               hatch5={s.hatch5}
-              fruitsExtra={s.fruitsExtra}
+              fruits={fruitsView}
               fruitTotal={s.fruitTotal}
+              dexOverride={dexView}
             />
           </div>
+          )}
 
-          {/* 하단 고정: 복기 */}
-          <button
-            onClick={a.openReview}
-            style={{
-              position: 'absolute',
-              left: 16,
-              right: 16,
-              bottom: 26,
-              zIndex: 20,
-              height: 52,
-              borderRadius: 16,
-              background: 'linear-gradient(180deg,#FF5A66,#E93D4C)',
-              color: '#FFFFFF',
-              fontSize: 14,
-              fontWeight: 700,
-              boxShadow: '0 10px 28px rgba(250,59,74,0.35)',
-            }}
-          >
-            🎙 홀디랑 3분 복기
-          </button>
+          {(mode === 'guest' || mode === 'real') && (
+            <>
+              {/* 하단 고정: 복기 */}
+              <button
+                onClick={a.openReview}
+                style={{
+                  position: 'absolute',
+                  left: 16,
+                  right: 16,
+                  bottom: 26,
+                  zIndex: 20,
+                  height: 52,
+                  borderRadius: 16,
+                  background: 'linear-gradient(180deg,#FF5A66,#E93D4C)',
+                  color: '#FFFFFF',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  boxShadow: '0 10px 28px rgba(250,59,74,0.35)',
+                }}
+              >
+                🎙 홀디랑 3분 복기
+              </button>
 
-          <Sheets s={s} a={a} execPrice={execPrice} />
+              <Sheets s={s} a={a} execPrice={execPrice} isReal={isReal} />
 
-          {/* 열매 플라잉 */}
-          {s.flyOn && (
-            <div style={{ position: 'absolute', left: '50%', top: '42%', zIndex: 60, pointerEvents: 'none', animation: 'flyF 0.9s ease-in forwards' }}>
-              <FruitSvg kind="pend" size={44} />
-            </div>
+              {/* 열매 플라잉 */}
+              {s.flyOn && (
+                <div style={{ position: 'absolute', left: '50%', top: '42%', zIndex: 60, pointerEvents: 'none', animation: 'flyF 0.9s ease-in forwards' }}>
+                  <FruitSvg kind="pend" size={44} />
+                </div>
+              )}
+            </>
           )}
 
           {/* 토스트 */}

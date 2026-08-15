@@ -14,6 +14,8 @@ export interface Egg {
   entry?: number
   /** 실시세 현재가 (quotes 수신 시 갱신) */
   price?: number
+  /** DB에서 온 실데이터 알 (목 진입가 리베이스 대상 아님) */
+  real?: boolean
   /** 손절선 % (양수 저장, −표기) */
   stop?: number
   /** 익절선 % */

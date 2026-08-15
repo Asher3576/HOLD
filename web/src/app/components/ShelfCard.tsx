@@ -18,8 +18,8 @@ export default function ShelfCard({
   onOpenEgg: (id: string) => void
   onOpenPlanNew: () => void
   onWildPlan: (id: string) => void
-  onRenew: () => void
-  onSend: () => void
+  onRenew: (id: string) => void
+  onSend: (id: string) => void
 }) {
   return (
     <div style={{ marginTop: 26 }}>
@@ -43,6 +43,17 @@ export default function ShelfCard({
         </button>
       </div>
       <div style={{ marginTop: 10, borderRadius: 20, padding: '6px 16px', ...glass }}>
+        {eggs.length === 0 && (
+          <div style={{ padding: '30px 8px', textAlign: 'center' }}>
+            <div style={{ fontSize: 30 }}>🥚</div>
+            <div style={{ marginTop: 8, fontSize: 13, fontWeight: 700 }}>선반이 비어 있어요</div>
+            <div style={{ marginTop: 5, fontSize: 11.5, lineHeight: 1.6, color: '#99A1B3' }}>
+              "+ 새 알 품기"로 첫 계획을 만들어봐.
+              <br />
+              손절선·익절선·기간·이유 — 4개면 알이 생겨.
+            </div>
+          </div>
+        )}
         {eggs.map((g, i) => {
           const wild = g.stage === 'wild'
           const crea = g.stage === 'creature'
@@ -182,7 +193,7 @@ export default function ShelfCard({
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          onRenew()
+                          onRenew(g.id)
                         }}
                         style={{ fontSize: 11.5, fontWeight: 700, color: '#FFFFFF', background: RED_GRAD, borderRadius: 999, padding: '6px 13px' }}
                       >
@@ -191,7 +202,7 @@ export default function ShelfCard({
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          onSend()
+                          onSend(g.id)
                         }}
                         style={{ fontSize: 11.5, fontWeight: 700, color: '#F2F4F8', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 999, padding: '6px 13px' }}
                       >

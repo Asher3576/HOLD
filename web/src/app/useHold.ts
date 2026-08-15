@@ -1,56 +1,30 @@
 /**
- * HOLD 중앙 상태 훅 — v5 디자인의 인터랙션 로직 포트.
- * 금고 마찰(길게 누르기 다이얼), 시트 4종, 매도 카운트다운, 알 생성/부화,
- * 복기 3턴, 확장 데모 시퀀스 + 손익비 핸들 드래그.
+ * HOLD 중앙 상태 훅.
+ * 모드 3종: signedOut(로그인 화면) / guest(목데이터 데모) / real(로그인 + DB 영속).
+ * real 모드: 알·열매·복기·모의현금을 Supabase에 쓰고, 새로고침해도 유지된다.
  */
 import { useEffect, useRef, useState } from 'react'
 import type { Egg, Fruit, PlanMode, SheetKind, VaultPhase } from './model'
 import { codeFor, DIAL_BASE, DIAL_STEP, SEED_CASH, SELL_COUNTDOWN } from './model'
-import { initialEggs, initialHatchedMap } from './mock/design'
+import { baseFruits, initialEggs, initialHatchedMap } from './mock/design'
 import { ENTRY } from './mock/prices'
 import { fetchQuotes, type Quote } from './lib/api'
+import { supabase } from './lib/supabase'
+import * as db from './lib/db'
+import { reviewTags } from './review'
 import { fmtWon } from './ui'
 import { y2p } from './ext/chartMath'
 
-/**
- * 실시세 수신 → 현재가 반영 + 목 진입가를 실가격 기준으로 리베이스.
- * 목 진입가(7만 삼성전자 등)와 실제 주가의 괴리로 진행률이 0/100에 붙는 것을 막기 위해,
- * "설계된 진행률(prog)이 현재 실가격 위치가 되도록" 진입가를 역산한다.
- *   price = entry × (1 − stop% + prog × (stop%+target%))  →  entry 역산
- * 이후 평가손익 = Σ 수량 × (현재가 − 진입가) 로 일관.
- */
-function applyQuotes(eggs: Egg[], quotes: Record<string, Quote>): Egg[] {
-  return eggs.map((g) => {
-    const q = g.code ? quotes[g.code] : undefined
-    if (!q || !Number.isFinite(q.price) || q.price <= 0) return g
-    const next: Egg = { ...g, price: q.price }
-    const planned =
-      g.stop != null && g.target != null &&
-      (g.stage === 'plain' || g.stage === 'crack' || g.stage === 'creature' || g.stage === 'expiry')
-    if (planned) {
-      const s = g.stop! / 100
-      const t = g.target! / 100
-      const p = (g.prog ?? 50) / 100
-      const denom = 1 - s + p * (s + t)
-      if (denom > 0) next.entry = Math.round(q.price / denom)
-    } else if (next.entry == null) {
-      next.entry = q.price // 야생알 — 기준가 없으면 현재가
-    }
-    return next
-  })
-}
+export type AppMode = 'loading' | 'signedOut' | 'guest' | 'real'
 
 export interface HoldState {
   surf: 'web' | 'ext'
   vaultPhase: VaultPhase
   dialDur: number
   openCount: number
-  /** 모의 계좌 현금 (임의 시드) */
   cash: number
-  /** 실시세 (code → quote). 비어 있으면 목데이터 모드 */
   quotes: Record<string, Quote>
   live: boolean
-  /** 새 알 품기 — 모의 매수 수량 */
   pQty: number
   newsOpen: boolean
   celebrating: boolean
@@ -62,6 +36,8 @@ export interface HoldState {
   hatchedMap: Record<string, number>
   fruitsExtra: Fruit[]
   fruitTotal: number
+  /** real 모드 전용 — DB에서 온 열매 뷰 */
+  realFruits: Fruit[] | null
   sheet: SheetKind | null
   sheetEgg: string | null
   justAdded: string | null
@@ -83,6 +59,12 @@ export interface HoldState {
   hStop: number
   hTarget: number
   toast: string | null
+  // 인증
+  authReady: boolean
+  userId: string | null
+  userEmail: string | null
+  guest: boolean
+  authBusy: boolean
 }
 
 const initial: HoldState = {
@@ -104,6 +86,7 @@ const initial: HoldState = {
   hatchedMap: initialHatchedMap,
   fruitsExtra: [],
   fruitTotal: 12,
+  realFruits: null,
   sheet: null,
   sheetEgg: null,
   justAdded: null,
@@ -125,9 +108,46 @@ const initial: HoldState = {
   hStop: 228.0,
   hTarget: 253.0,
   toast: null,
+  authReady: false,
+  userId: null,
+  userEmail: null,
+  guest: false,
+  authBusy: false,
 }
 
 type Patch = Partial<HoldState> | ((s: HoldState) => Partial<HoldState>)
+
+/**
+ * 실시세 수신 → 현재가 반영.
+ * - real 알: 진입가가 진짜이므로 진행률을 진입가 기준으로 직접 계산.
+ * - 목 알: 목 진입가와 실가격 괴리로 0/100에 붙지 않게, 설계 진행률 기준으로 진입가 리베이스.
+ */
+function applyQuotes(eggs: Egg[], quotes: Record<string, Quote>): Egg[] {
+  return eggs.map((g) => {
+    const q = g.code ? quotes[g.code] : undefined
+    if (!q || !Number.isFinite(q.price) || q.price <= 0) return g
+    const next: Egg = { ...g, price: q.price }
+    const planned =
+      g.stop != null && g.target != null &&
+      (g.stage === 'plain' || g.stage === 'crack' || g.stage === 'creature' || g.stage === 'expiry')
+    if (planned && g.real && g.entry) {
+      const stopPrice = g.entry * (1 - g.stop! / 100)
+      const takePrice = g.entry * (1 + g.target! / 100)
+      if (takePrice > stopPrice) {
+        next.prog = Math.round(Math.max(0, Math.min(100, ((q.price - stopPrice) / (takePrice - stopPrice)) * 100)))
+      }
+    } else if (planned) {
+      const s = g.stop! / 100
+      const t = g.target! / 100
+      const p = (g.prog ?? 50) / 100
+      const denom = 1 - s + p * (s + t)
+      if (denom > 0) next.entry = Math.round(q.price / denom)
+    } else if (next.entry == null) {
+      next.entry = q.price
+    }
+    return next
+  })
+}
 
 export function useHold() {
   const [s, setAll] = useState<HoldState>(initial)
@@ -136,6 +156,9 @@ export function useHold() {
 
   const set = (patch: Patch) =>
     setAll((prev) => ({ ...prev, ...(typeof patch === 'function' ? patch(prev) : patch) }))
+
+  const mode: AppMode = !s.authReady ? 'loading' : s.userId ? 'real' : s.guest ? 'guest' : 'signedOut'
+  const isReal = mode === 'real'
 
   // 타이머
   const dialT = useRef<number>()
@@ -163,43 +186,6 @@ export function useHold() {
     [],
   )
 
-  // 실시세 로드 (토스증권 → 스토커스클럽 엣지 → HOLD prices 프록시). 실패 시 목데이터 유지.
-  useEffect(() => {
-    let on = true
-    const codes = Array.from(
-      new Set(
-        sRef.current.eggs.map((g) => g.code).filter((c): c is string => !!c),
-      ),
-    )
-    if (!codes.length) return
-    fetchQuotes(codes).then((quotes) => {
-      if (!on || !quotes) return
-      set((st) => ({ quotes, live: true, eggs: applyQuotes(st.eggs, quotes) }))
-    })
-    return () => {
-      on = false
-    }
-  }, [])
-
-  /** 종목명 기준 모의 체결가: 실시세 → 목 진입가 → 10,000원 */
-  const execPrice = (name: string): number => {
-    const code = codeFor(name)
-    const q = code ? sRef.current.quotes[code] : undefined
-    if (q && Number.isFinite(q.price) && q.price > 0) return q.price
-    return ENTRY[name] ?? 10_000
-  }
-
-  /** 아직 없는 종목 시세를 온디맨드 로드 (알 만들기에서 종목명 입력 시) */
-  const ensureQuote = (name: string) => {
-    const code = codeFor(name)
-    if (!code || sRef.current.quotes[code]) return
-    fetchQuotes([code]).then((q) => {
-      if (q && q[code]) set((st) => ({ quotes: { ...st.quotes, ...q }, live: true }))
-    })
-  }
-  /** 알의 현재 평가 단가 */
-  const eggPrice = (g: Egg): number => g.price ?? g.entry ?? ENTRY[g.name] ?? 0
-
   const showToast = (msg: string) => {
     clearTimeout(toastT.current)
     set({ toast: msg })
@@ -210,6 +196,134 @@ export function useHold() {
     clearTimeout(celebT.current)
     set({ celebrating: true })
     celebT.current = window.setTimeout(() => set({ celebrating: false }), 2600)
+  }
+
+  // ─── 인증 ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!supabase) {
+      set({ authReady: true, guest: true }) // env 미설정 — 게스트 데모만
+      return
+    }
+    supabase.auth.getSession().then(({ data }) => {
+      const u = data.session?.user
+      set({ authReady: true, userId: u?.id ?? null, userEmail: u?.email ?? null })
+    })
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      const u = session?.user
+      set({ userId: u?.id ?? null, userEmail: u?.email ?? null, guest: false })
+    })
+    return () => sub.subscription.unsubscribe()
+  }, [])
+
+  const signIn = async (email: string, pw: string) => {
+    if (!supabase) return
+    set({ authBusy: true })
+    const { error } = await supabase.auth.signInWithPassword({ email, password: pw })
+    set({ authBusy: false })
+    if (error) showToast(`로그인 실패 — ${error.message}`)
+  }
+
+  const signUp = async (email: string, pw: string) => {
+    if (!supabase) return
+    set({ authBusy: true })
+    const { data, error } = await supabase.auth.signUp({ email, password: pw })
+    set({ authBusy: false })
+    if (error) {
+      showToast(`가입 실패 — ${error.message}`)
+    } else if (!data.session) {
+      showToast('확인 메일을 보냈어요 — 메일함에서 인증 후 로그인해주세요.')
+    }
+  }
+
+  const signOut = async () => {
+    await supabase?.auth.signOut()
+    set({ ...initial, authReady: true, guest: false })
+  }
+
+  const enterGuest = () => set({ guest: true })
+
+  // ─── real 모드 데이터 로드 ─────────────────────────────────────────────
+  const loadedFor = useRef<string | null>(null)
+  useEffect(() => {
+    const uid = s.userId
+    if (!uid || loadedFor.current === uid) return
+    loadedFor.current = uid
+    ;(async () => {
+      const [acct, hatchedMap, stats] = await Promise.all([
+        db.ensureAccount(uid),
+        db.fetchHatchedMap(uid),
+        db.fetchHatchStats(uid),
+      ])
+      const [eggs, fruits] = await Promise.all([db.fetchEggs(uid, hatchedMap), db.fetchFruits(uid)])
+      set({
+        eggs: eggs ?? [],
+        cash: acct?.cash ?? SEED_CASH,
+        hatchedMap,
+        hatchN: stats.hatchN,
+        hatchRate: stats.hatchRate,
+        realFruits: fruits?.fruits ?? [],
+        fruitTotal: fruits?.total ?? 0,
+        quotes: {},
+        live: false,
+      })
+      pendingScore.current = fruits?.pending ?? []
+      quotesFor.current = null // 시세 재로드 트리거
+    })()
+  }, [s.userId])
+
+  // ─── 실시세 로드 (KIS) + 열매 채점 ─────────────────────────────────────
+  const quotesFor = useRef<string | null>(null)
+  const pendingScore = useRef<db.RealFruits['pending']>([])
+  useEffect(() => {
+    if (mode === 'loading' || mode === 'signedOut') return
+    const codes = Array.from(
+      new Set(s.eggs.map((g) => g.code).filter((c): c is string => !!c)),
+    )
+    const key = `${mode}:${codes.sort().join(',')}`
+    if (!codes.length || quotesFor.current === key) return
+    quotesFor.current = key
+    let on = true
+    fetchQuotes(codes).then(async (quotes) => {
+      if (!on || !quotes) return
+      set((st) => ({ quotes: { ...st.quotes, ...quotes }, live: true, eggs: applyQuotes(st.eggs, quotes) }))
+      // 30일 지난 참은 기록 채점 (MVP: 현재가 기준 — 크론 채점은 Phase C 잔여)
+      if (isReal && pendingScore.current.length) {
+        const n = await db.scorePending(pendingScore.current, (sym) => quotes[sym]?.price)
+        pendingScore.current = []
+        if (n > 0 && sRef.current.userId) {
+          const fr = await db.fetchFruits(sRef.current.userId)
+          if (fr) set({ realFruits: fr.fruits, fruitTotal: fr.total })
+          showToast(`열매 ${n}개가 익었어 — 저장고에서 확인해봐`)
+        }
+      }
+    })
+    return () => {
+      on = false
+    }
+    // eslint 없음 — mode/eggs 코드 목록 변화 시 재로드
+  }, [mode, s.eggs, isReal])
+
+  /** 종목명 기준 모의 체결가: 실시세 → 목 진입가 → 10,000원 */
+  const execPrice = (name: string): number => {
+    const code = codeFor(name)
+    const q = code ? sRef.current.quotes[code] : undefined
+    if (q && Number.isFinite(q.price) && q.price > 0) return q.price
+    return ENTRY[name] ?? 10_000
+  }
+
+  const ensureQuote = (name: string) => {
+    const code = codeFor(name)
+    if (!code || sRef.current.quotes[code]) return
+    fetchQuotes([code]).then((q) => {
+      if (q && q[code]) set((st) => ({ quotes: { ...st.quotes, ...q }, live: true }))
+    })
+  }
+
+  const eggPrice = (g: Egg): number => g.price ?? g.entry ?? ENTRY[g.name] ?? 0
+
+  const persistCash = (cash: number) => {
+    const uid = sRef.current.userId
+    if (uid) void db.saveCash(uid, cash)
   }
 
   // ─── 금고 ──────────────────────────────────────────────────────────────
@@ -236,10 +350,10 @@ export function useHold() {
   // ─── 시트 ──────────────────────────────────────────────────────────────
   const openEgg = (id: string) => set({ sheet: 'detail', sheetEgg: id })
   const openSell = () => set({ sheet: 'sell', changing: false, cd: null, changeReason: '' })
-  const openPlan = (mode: PlanMode, eggId?: string | null, pre?: { name?: string; stop?: number; target?: number }) =>
+  const openPlan = (mode2: PlanMode, eggId?: string | null, pre?: { name?: string; stop?: number; target?: number }) =>
     set({
       sheet: 'plan',
-      pMode: mode,
+      pMode: mode2,
       sheetEgg: eggId ?? null,
       pName: pre?.name ?? '',
       pStop: pre?.stop ?? 3,
@@ -268,20 +382,22 @@ export function useHold() {
     const egg = st.eggs.find((g) => g.id === st.sheetEgg)
     const n = st.fruitTotal + 1
     clearTimeout(flyT.current)
+    const newFruit: Fruit = { name: egg?.name ?? '', kind: 'pend', dir: 'D-30', note: '30일 뒤 판명' }
     set((prev) => ({
       sheet: null,
       changing: false,
       cd: null,
       flyOn: true,
       fruitTotal: n,
-      fruitsExtra: [
-        { name: egg?.name ?? '', kind: 'pend', dir: 'D-30', note: '30일 뒤 판명' },
-        ...prev.fruitsExtra,
-      ],
+      fruitsExtra: [newFruit, ...prev.fruitsExtra],
+      realFruits: prev.realFruits ? [newFruit, ...prev.realFruits] : prev.realFruits,
     }))
     celebrate()
     flyT.current = window.setTimeout(() => set({ flyOn: false }), 950)
     showToast(`${n}번째 열매야. 30일 뒤에 어떻게 익었는지 알려줄게`)
+    if (isReal && st.userId && egg?.real) {
+      void db.insertHeldRecord(st.userId, egg.id, 'hold_sell', eggPrice(egg))
+    }
   }
 
   const startChange = () => {
@@ -320,6 +436,10 @@ export function useHold() {
         (egg?.stage === 'creature' ? ' — 사육 중단' : '') +
         '. 실거래는 없어 — 이유는 적어뒀어.',
     )
+    if (egg?.real) {
+      void db.endPlan(egg.id, 'sold_early')
+      persistCash(st.cash + proceeds)
+    }
   }
 
   // ─── 계획(알 만들기) ────────────────────────────────────────────────────
@@ -331,7 +451,6 @@ export function useHold() {
 
   const submitPlan = () => {
     const st = sRef.current
-    // 계획 기준가 = 계획 시작 시점 체결/현재가 (실시세 우선)
     const mk = (id: string, name: string, qtyN: number, entryPrice: number): Egg => {
       const lv = st.hatchedMap[name] || 0
       return {
@@ -352,39 +471,63 @@ export function useHold() {
         reason: st.pReason,
         memoL: '오늘의 너',
         memoQ: st.pReason,
+        real: isReal,
       }
     }
-    if (st.pMode === 'wild') {
-      // 이미 보유 중인 야생알에 계획만 붙임 — 매수 없음
+    const target = st.eggs.find((g) => g.id === st.sheetEgg)
+
+    if (st.pMode === 'wild' && target) {
+      // 보유분에 계획만 붙임 — 매수 없음 (게스트 데모 전용 시나리오)
       set((prev) => ({
-        eggs: prev.eggs.map((g) => (g.id === 'nv' ? mk('nv', 'NAVER', g.qtyN ?? 10, execPrice('NAVER')) : g)),
+        eggs: prev.eggs.map((g) =>
+          g.id === target.id ? mk(target.id, target.name, target.qtyN ?? 10, execPrice(target.name)) : g,
+        ),
         sheet: null,
-        justAdded: 'nv',
+        justAdded: target.id,
       }))
       celebrate()
-      showToast('NAVER에 계획을 붙였어.')
-    } else if (st.pMode === 'renew') {
-      // 재계약 — 보유 유지, 기준가만 현재가로 리셋. 매매 없음
-      set((prev) => {
-        const hm = { ...prev.hatchedMap, 카카오: (prev.hatchedMap['카카오'] || 0) + 1 }
-        const old = prev.eggs.find((g) => g.id === 'kk0')
-        const kk = mk('kk', '카카오', old?.qtyN ?? 30, execPrice('카카오'))
-        kk.stage = 'creature'
-        kk.lv = hm['카카오']
-        return {
-          hatchedMap: hm,
-          eggs: [...prev.eggs.filter((g) => g.id !== 'kk0'), kk],
-          hatch5: true,
-          hatchN: prev.hatch5 ? prev.hatchN : 5,
-          hatchRate: 38,
-          sheet: null,
-          justAdded: 'kk',
-        }
-      })
+      showToast(`${target.name}에 계획을 붙였어.`)
+    } else if (st.pMode === 'renew' && target) {
+      // 재계약 = 기존 계획 완주(부화) + 같은 보유분으로 새 계획. 매매 없음
+      const name = target.name
+      const entry = execPrice(name)
+      const qtyN = target.qtyN ?? 10
+      const doLocal = (newId: string) =>
+        set((prev) => {
+          const hm = { ...prev.hatchedMap, [name]: (prev.hatchedMap[name] || 0) + 1 }
+          const kk = mk(newId, name, qtyN, entry)
+          kk.stage = 'creature'
+          kk.lv = hm[name]
+          return {
+            hatchedMap: hm,
+            eggs: [...prev.eggs.filter((g) => g.id !== target.id), kk],
+            hatch5: name === '카카오' ? true : prev.hatch5,
+            hatchN: prev.hatchN + 1,
+            sheet: null,
+            justAdded: newId,
+          }
+        })
+      if (isReal && st.userId && target.real) {
+        void db.endPlan(target.id, 'hatched')
+        void db
+          .createPlan(st.userId, {
+            symbol: codeFor(name) ?? name,
+            name,
+            entry,
+            qty: qtyN,
+            stop: st.pStop,
+            take: st.pTarget,
+            days: st.pDays,
+            reason: st.pReason,
+          })
+          .then((newId) => doLocal(newId ?? `local${Date.now()}`))
+      } else {
+        doLocal(`renew${Date.now()}`)
+      }
       celebrate()
-      showToast('카카오 부화! 이제 사육이야 — 완주할 때마다 Lv이 올라.')
+      showToast(`${name} 부화! 이제 사육이야 — 완주할 때마다 Lv이 올라.`)
     } else {
-      // 새 알 = 모의 매수 (실거래 아님)
+      // 새 알 = 모의 매수
       const name = st.pName.trim() || '새 종목'
       const price = execPrice(name)
       const cost = st.pQty * price
@@ -392,46 +535,86 @@ export function useHold() {
         showToast(`모의 현금이 부족해 — 필요 ${fmtWon(cost)}, 보유 ${fmtWon(st.cash)}`)
         return
       }
-      const id = `new${Date.now()}`
-      set((prev) => ({
-        eggs: [...prev.eggs, mk(id, name, st.pQty, price)],
-        cash: prev.cash - cost,
-        sheet: null,
-        justAdded: id,
-      }))
-      celebrate()
-      showToast(`${name} ${st.pQty}주 모의 매수 체결 · ${fmtWon(cost)} — 새 알을 선반에 놓았어.`)
+      const doLocal = (id: string) => {
+        set((prev) => ({
+          eggs: [...prev.eggs, mk(id, name, st.pQty, price)],
+          cash: prev.cash - cost,
+          sheet: null,
+          justAdded: id,
+        }))
+        celebrate()
+        showToast(`${name} ${st.pQty}주 모의 매수 체결 · ${fmtWon(cost)} — 새 알을 선반에 놓았어.`)
+      }
+      if (isReal && st.userId) {
+        void db
+          .createPlan(st.userId, {
+            symbol: codeFor(name) ?? name,
+            name,
+            entry: price,
+            qty: st.pQty,
+            stop: st.pStop,
+            take: st.pTarget,
+            days: st.pDays,
+            reason: st.pReason,
+          })
+          .then((id) => {
+            doLocal(id ?? `local${Date.now()}`)
+            persistCash(sRef.current.cash)
+          })
+      } else {
+        doLocal(`new${Date.now()}`)
+      }
     }
   }
 
-  /** 보험 작동(shield) 알 선반 정리 — 기록은 도감에 남는다 */
+  // ─── 만기·보험 알 ──────────────────────────────────────────────────────
+  const expiryRenew = (id: string) => openPlan('renew', id)
+
+  const expirySend = (id: string) => {
+    const egg = sRef.current.eggs.find((g) => g.id === id)
+    if (!egg) return
+    const proceeds = egg.qtyN ? egg.qtyN * eggPrice(egg) : 0
+    set((prev) => ({
+      eggs: prev.eggs.filter((g) => g.id !== id),
+      cash: prev.cash + proceeds,
+      hatch5: egg.name === '카카오' ? true : prev.hatch5,
+      hatchN: prev.hatchN + 1,
+      sheet: null,
+      hatchedMap: { ...prev.hatchedMap, [egg.name]: (prev.hatchedMap[egg.name] || 0) + 1 },
+    }))
+    celebrate()
+    showToast(`${egg.name} 완주 — 모의 매도 ${fmtWon(proceeds)} 회수, 부화해서 도감에 올라갔어.`)
+    if (egg.real) {
+      void db.endPlan(egg.id, 'hatched')
+      persistCash(sRef.current.cash + proceeds)
+    }
+  }
+
   const dismissShield = (id: string) => {
     const egg = sRef.current.eggs.find((g) => g.id === id)
     set((prev) => ({ eggs: prev.eggs.filter((g) => g.id !== id), sheet: null }))
     showToast(`${egg?.name ?? ''} 선반에서 정리했어 — 보험 기록은 도감에 남아있어.`)
-  }
-
-  // ─── 만기 알 ───────────────────────────────────────────────────────────
-  const expiryRenew = () => openPlan('renew', 'kk0')
-  const expirySend = () => {
-    const egg = sRef.current.eggs.find((g) => g.id === 'kk0')
-    const proceeds = egg?.qtyN ? egg.qtyN * eggPrice(egg) : 0
-    set((prev) => ({
-      eggs: prev.eggs.filter((g) => g.id !== 'kk0'),
-      cash: prev.cash + proceeds,
-      hatch5: true,
-      hatchN: 5,
-      hatchRate: 38,
-      sheet: null,
-      hatchedMap: { ...prev.hatchedMap, 카카오: 1 },
-    }))
-    celebrate()
-    showToast(`카카오 완주 — 모의 매도 ${fmtWon(proceeds)} 회수, 부화해서 도감에 올라갔어.`)
+    if (egg?.real) void db.dismissPlan(egg.id)
   }
 
   // ─── 복기 ──────────────────────────────────────────────────────────────
   const rvPick1 = (label: string) => set({ rvA1: label, rvStep: 1 })
-  const rvPick2 = (label: string) => set({ rvA2: label, rvStep: 2 })
+  const rvPick2 = (label: string) => {
+    set({ rvA2: label, rvStep: 2 })
+    const st = sRef.current
+    if (isReal && st.userId) {
+      // 복기 카드 저장 — 가장 최근 real 알에 연결 (없으면 저장 생략)
+      const anchor = st.eggs.find((g) => g.real)
+      if (anchor) {
+        const t = reviewTags(st.rvA1, label)
+        void db.insertReview(st.userId, anchor.id, {
+          trigger: t.rvTrigger,
+          thesis: t.rvThesis,
+          emotion: t.rvEmotion,
+        })
+      }
+    }
+  }
 
   // ─── 확장 데모 ─────────────────────────────────────────────────────────
   const clearExtTimers = () => {
@@ -458,7 +641,6 @@ export function useHold() {
   }
   const goWeb = () => set({ surf: 'web' })
 
-  // 손익비 핸들 드래그 (Y→가격, 0.1 스냅, 219.5~255 클램프)
   const hSet = (e: { clientY: number }) => {
     const r = chartRect.current
     const k = dragK.current
@@ -474,7 +656,7 @@ export function useHold() {
     try {
       e.currentTarget.setPointerCapture(e.pointerId)
     } catch {
-      /* pointer capture 미지원 브라우저 무시 */
+      /* pointer capture 미지원 무시 */
     }
     chartRect.current = chartRef.current?.getBoundingClientRect() ?? null
     hSet(e)
@@ -494,7 +676,7 @@ export function useHold() {
     showToast(`확장에서 가져왔어 — 손절 −${stopPct}% · 익절 +${tgtPct}%`)
   }
 
-  // 모의 계좌 요약 (금고에서만 노출) — 평가손익 = Σ 수량 × (현재가 − 진입가)
+  // ─── 파생 뷰 ───────────────────────────────────────────────────────────
   let costBasis = 0
   let stockValue = 0
   for (const g of s.eggs) {
@@ -512,12 +694,29 @@ export function useHold() {
     costBasis,
   }
 
+  /** 열매 뷰: real 모드는 DB, 게스트는 목 + 세션 추가분 */
+  const fruitsView: Fruit[] = isReal ? (s.realFruits ?? []) : [...s.fruitsExtra, ...baseFruits]
+
+  /** 도감 뷰: hatchedMap → 생물 목록 (게스트는 디자인 고정 4+1) */
+  const dexKinds = ['ss', 'hd', 'kia', 'posco', 'kakao'] as const
+  const dexView = isReal
+    ? Object.entries(s.hatchedMap).map(([name, lv], i) => ({
+        name,
+        lv,
+        kind: dexKinds[i % dexKinds.length],
+      }))
+    : null
+
   return {
     s,
     set,
+    mode,
+    isReal,
     chartRef,
     portfolio,
     execPrice,
+    fruitsView,
+    dexView,
     actions: {
       vaultDown,
       vaultUp,
@@ -552,6 +751,10 @@ export function useHold() {
       setChangeReason: (v: string) => set({ changeReason: v }),
       setPName: (v: string) => set({ pName: v }),
       setPReason: (v: string) => set({ pReason: v }),
+      signIn,
+      signUp,
+      signOut,
+      enterGuest,
     },
   }
 }

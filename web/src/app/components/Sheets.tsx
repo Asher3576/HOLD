@@ -15,10 +15,12 @@ export default function Sheets({
   s,
   a,
   execPrice,
+  isReal,
 }: {
   s: HoldState
   a: HoldActions
   execPrice: (name: string) => number
+  isReal: boolean
 }) {
   if (!s.sheet) return null
   return (
@@ -46,7 +48,7 @@ export default function Sheets({
       >
         <div style={{ width: 36, height: 4, borderRadius: 99, background: 'rgba(255,255,255,0.2)', margin: '0 auto 14px' }} />
         {s.sheet === 'detail' && <DetailSheet s={s} a={a} />}
-        {s.sheet === 'sell' && <SellSheet s={s} a={a} />}
+        {s.sheet === 'sell' && <SellSheet s={s} a={a} isReal={isReal} />}
         {s.sheet === 'plan' && <PlanSheet s={s} a={a} execPrice={execPrice} />}
         {s.sheet === 'review' && <ReviewSheet s={s} a={a} />}
       </div>
@@ -249,7 +251,7 @@ function Row({ label, value, top }: { label: string; value: string; top?: boolea
 }
 
 // ─── 매도 개입 ──────────────────────────────────────────────────────────────
-function SellSheet({ s, a }: { s: HoldState; a: HoldActions }) {
+function SellSheet({ s, a, isReal }: { s: HoldState; a: HoldActions; isReal: boolean }) {
   const d = s.eggs.find((g) => g.id === s.sheetEgg) ?? s.eggs[0]
   if (!d) return null
   return (
@@ -271,47 +273,57 @@ function SellSheet({ s, a }: { s: HoldState; a: HoldActions }) {
         </div>
       )}
 
-      {/* 과거 매도 12건 */}
+      {/* 과거 매도 기록 — real 모드는 기록이 쌓인 뒤 채워진다 (정직성: 가짜 통계 노출 금지) */}
       <div style={{ marginTop: 12, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: 14 }}>
-        <div style={{ fontSize: 12.5, lineHeight: 1.65, color: '#D6DAE3' }}>
-          당신의 과거 매도 <span style={{ fontWeight: 700, color: '#F2F4F8' }}>12건</span> 중{' '}
-          <span style={{ fontWeight: 700, color: '#E36A5C' }}>8건</span>은 판 자리에서 30일 뒤 가격이
-          더 올랐어요. 반대였던 4건도 함께 보여드릴게요.
-        </div>
-        <div style={{ marginTop: 10, maxHeight: 164, overflowY: 'auto', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-          {sellRecData.map((r, i) => (
-            <div
-              key={r.n}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '9px 0',
-                borderTop: i > 0 ? '1px solid rgba(255,255,255,0.06)' : undefined,
-              }}
-            >
-              <span style={{ fontSize: 12, fontWeight: 600, minWidth: 92 }}>{r.n}</span>
-              <span style={{ ...monoNum, fontSize: 10.5, color: '#7A8296' }}>{r.d} 매도</span>
-              <span style={{ flex: 1 }} />
-              <span
-                style={{
-                  flex: 'none',
-                  fontSize: 9.5,
-                  fontWeight: 700,
-                  padding: '3px 8px',
-                  borderRadius: 999,
-                  background: r.up ? 'rgba(227,106,92,0.14)' : 'rgba(91,132,196,0.16)',
-                  color: r.up ? '#E36A5C' : '#7FA8E8',
-                }}
-              >
-                {r.up ? '30일 뒤 상승' : '30일 뒤 하락'}
-              </span>
+        {isReal ? (
+          <div style={{ fontSize: 12.5, lineHeight: 1.65, color: '#D6DAE3' }}>
+            아직 매도 기록이 충분하지 않아요. 기록이 쌓이면{' '}
+            <span style={{ fontWeight: 700, color: '#F2F4F8' }}>"판 자리에서 30일 뒤 어떻게 됐는지"</span>
+            를 여기서 비춰줄게요 — 방향만, 숫자 없이.
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: 12.5, lineHeight: 1.65, color: '#D6DAE3' }}>
+              당신의 과거 매도 <span style={{ fontWeight: 700, color: '#F2F4F8' }}>12건</span> 중{' '}
+              <span style={{ fontWeight: 700, color: '#E36A5C' }}>8건</span>은 판 자리에서 30일 뒤 가격이
+              더 올랐어요. 반대였던 4건도 함께 보여드릴게요.
             </div>
-          ))}
-        </div>
-        <div style={{ marginTop: 8, fontSize: 10, color: '#5A6170' }}>
-          방향만 보여줘요 — 수익률 숫자는 금고 안에서만
-        </div>
+            <div style={{ marginTop: 10, maxHeight: 164, overflowY: 'auto', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+              {sellRecData.map((r, i) => (
+                <div
+                  key={r.n}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '9px 0',
+                    borderTop: i > 0 ? '1px solid rgba(255,255,255,0.06)' : undefined,
+                  }}
+                >
+                  <span style={{ fontSize: 12, fontWeight: 600, minWidth: 92 }}>{r.n}</span>
+                  <span style={{ ...monoNum, fontSize: 10.5, color: '#7A8296' }}>{r.d} 매도</span>
+                  <span style={{ flex: 1 }} />
+                  <span
+                    style={{
+                      flex: 'none',
+                      fontSize: 9.5,
+                      fontWeight: 700,
+                      padding: '3px 8px',
+                      borderRadius: 999,
+                      background: r.up ? 'rgba(227,106,92,0.14)' : 'rgba(91,132,196,0.16)',
+                      color: r.up ? '#E36A5C' : '#7FA8E8',
+                    }}
+                  >
+                    {r.up ? '30일 뒤 상승' : '30일 뒤 하락'}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 8, fontSize: 10, color: '#5A6170' }}>
+              방향만 보여줘요 — 수익률 숫자는 금고 안에서만
+            </div>
+          </>
+        )}
       </div>
 
       {!s.changing ? (
