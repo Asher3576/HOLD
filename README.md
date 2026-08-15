@@ -187,8 +187,14 @@ supabase/
 
 ## 단계
 
-- **Phase A (현재)**: 앱 UI 본구현 — 홀디·금고·알 선반 (목데이터).
-- **Phase B**: Supabase 연결 — `supabase link --project-ref xpjtgmckrazfbyghkeve` 후 `supabase db push`, Auth 연동.
+- **Phase A (현재)**: 앱 UI 본구현 — 홀디·금고·알 선반. 모의 계좌(시드 현금 1,000만)로 모의 매수/매도 동작.
+- **실시세 연결**: 앱은 자기 프로젝트의 `prices` 엣지 함수(스토커스클럽 엣지 → 토스증권 Open API 중계)에서 시세를 받는다. 미배포면 목데이터로 자동 폴백.
+  ```bash
+  supabase link --project-ref xpjtgmckrazfbyghkeve
+  supabase functions deploy prices --no-verify-jwt
+  # 확인: curl "https://xpjtgmckrazfbyghkeve.supabase.co/functions/v1/prices/quotes?symbols=005930"
+  ```
+- **Phase B**: `supabase db push`(스키마 적용), Auth 연동 — 목데이터 → 실데이터.
 - **Phase C**: AI 복기·논지 레이더 + 시세 크론 + 채점.
 - **Ext-1**: 오버레이+브리핑 (심볼 URL 파싱, 수동 보정) · **Ext-2**: 비전 캘리브레이션 · **Ext-3**: 라이브 코멘트.
 

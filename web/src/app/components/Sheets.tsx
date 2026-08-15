@@ -1,16 +1,25 @@
 /** 바텀시트 4종 — 알 상세 / 매도 개입 / 새 알 품기 / 홀디랑 복기 */
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { HoldState, HoldActions } from '../useHold'
 import { sellRecData } from '../mock/design'
-import { eggChart } from '../mock/prices'
+import { eggChart, type PricePoint } from '../mock/prices'
+import { fetchDailyCloses } from '../lib/api'
 import { reviewTags } from '../review'
-import { ghostBtn, monoNum, redCta } from '../ui'
+import { fmtWon, ghostBtn, monoNum, redCta } from '../ui'
 import Holdie from './holdie/Holdie'
 import PriceChart, { type PlanLine } from './PriceChart'
 import { ShieldIcon } from './svg'
 import { ReviewChips } from './ReviewRecordCard'
 
-export default function Sheets({ s, a }: { s: HoldState; a: HoldActions }) {
+export default function Sheets({
+  s,
+  a,
+  execPrice,
+}: {
+  s: HoldState
+  a: HoldActions
+  execPrice: (name: string) => number
+}) {
   if (!s.sheet) return null
   return (
     <div style={{ position: 'absolute', inset: 0, zIndex: 30 }}>
@@ -38,7 +47,7 @@ export default function Sheets({ s, a }: { s: HoldState; a: HoldActions }) {
         <div style={{ width: 36, height: 4, borderRadius: 99, background: 'rgba(255,255,255,0.2)', margin: '0 auto 14px' }} />
         {s.sheet === 'detail' && <DetailSheet s={s} a={a} />}
         {s.sheet === 'sell' && <SellSheet s={s} a={a} />}
-        {s.sheet === 'plan' && <PlanSheet s={s} a={a} />}
+        {s.sheet === 'plan' && <PlanSheet s={s} a={a} execPrice={execPrice} />}
         {s.sheet === 'review' && <ReviewSheet s={s} a={a} />}
       </div>
     </div>
@@ -55,15 +64,35 @@ function DetailSheet({ s, a }: { s: HoldState; a: HoldActions }) {
 
   // 차트 데이터·계획선 — 알이 바뀔 때만 재계산 (토스트 등 리렌더에 차트 재생성 방지)
   const chart = useMemo(() => (d ? eggChart(d) : null), [d])
+
+  // 실데이터 일봉 (토스증권 지연시세) — 실패 시 목데이터 유지
+  const [liveData, setLiveData] = useState<PricePoint[] | null>(null)
+  const code = d?.code
+  useEffect(() => {
+    let on = true
+    setLiveData(null)
+    if (code) {
+      fetchDailyCloses(code).then((r) => {
+        if (on && r && r.length) setLiveData(r)
+      })
+    }
+    return () => {
+      on = false
+    }
+  }, [code])
+
   const chartLines = useMemo<PlanLine[]>(() => {
-    if (!chart) return []
-    const ls: PlanLine[] = []
-    if (chart.stopPrice != null) ls.push({ price: chart.stopPrice, color: '#FF6B77', title: '손절선' })
-    if (chart.takePrice != null) ls.push({ price: chart.takePrice, color: '#57C7A4', title: '익절선' })
-    return ls
-  }, [chart])
+    if (!d || d.stop == null || d.target == null) return []
+    const entry = d.entry ?? chart?.entry
+    if (entry == null) return []
+    return [
+      { price: entry * (1 - d.stop / 100), color: '#FF6B77', title: '손절선' },
+      { price: entry * (1 + d.target / 100), color: '#57C7A4', title: '익절선' },
+    ]
+  }, [d, chart])
 
   if (!d || !chart) return null
+  const chartData = liveData ?? chart.data
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
@@ -81,10 +110,12 @@ function DetailSheet({ s, a }: { s: HoldState; a: HoldActions }) {
         <div style={{ marginTop: 14, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: '12px 8px 6px' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', padding: '0 8px' }}>
             <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: '#7A8296' }}>주가 흐름</span>
-            <span style={{ fontSize: 9.5, color: '#5A6170' }}>지연시세 기준</span>
+            <span style={{ fontSize: 9.5, color: '#5A6170' }}>
+              {liveData ? '토스증권 지연시세' : '목데이터 (시세 연결 전)'}
+            </span>
           </div>
           <div style={{ marginTop: 6, filter: dNear ? 'blur(2.5px)' : undefined, opacity: dNear ? 0.75 : 1 }}>
-            <PriceChart data={chart.data} lines={chartLines} height={150} />
+            <PriceChart data={chartData} lines={chartLines} height={150} />
           </div>
           {dNear && (
             <div style={{ padding: '4px 8px 6px', textAlign: 'center', fontSize: 10.5, color: '#57C7A4' }}>
@@ -340,11 +371,24 @@ function SellSheet({ s, a }: { s: HoldState; a: HoldActions }) {
 }
 
 // ─── 새 알 품기 ─────────────────────────────────────────────────────────────
-function PlanSheet({ s, a }: { s: HoldState; a: HoldActions }) {
+function PlanSheet({
+  s,
+  a,
+  execPrice,
+}: {
+  s: HoldState
+  a: HoldActions
+  execPrice: (name: string) => number
+}) {
   const pComplete = s.pReason.trim().length > 0
   const aiDecided = s.pAi !== null
   const title =
     s.pMode === 'wild' ? 'NAVER 계획 붙이기' : s.pMode === 'renew' ? '카카오 사육 계획' : '새 알 품기'
+  // 모의 매수 견적 (new 모드만 — wild/renew 는 보유분에 계획만 붙임)
+  const isBuy = s.pMode === 'new'
+  const buyPrice = isBuy ? execPrice(s.pName.trim() || '새 종목') : 0
+  const buyCost = buyPrice * s.pQty
+  const insufficient = isBuy && buyCost > s.cash
   const stepper = (
     label: string,
     valueLabel: string,
@@ -403,6 +447,8 @@ function PlanSheet({ s, a }: { s: HoldState; a: HoldActions }) {
         {stepper('손절선', `−${s.pStop}%`, () => a.adj('pStop', 1, 1, 15), () => a.adj('pStop', -1, 1, 15))}
         {stepper('익절선', `+${s.pTarget}%`, () => a.adj('pTarget', -1, 3, 40), () => a.adj('pTarget', 1, 3, 40), true)}
         {stepper('기간', `${s.pDays}일`, () => a.adj('pDays', -5, 5, 180), () => a.adj('pDays', 5, 5, 180), true)}
+        {isBuy &&
+          stepper('수량', `${s.pQty}주`, () => a.adj('pQty', -1, 1, 999), () => a.adj('pQty', 1, 1, 999), true)}
         <div style={{ padding: '11px 0 14px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
           <span style={{ fontSize: 12.5, color: '#99A1B3' }}>매수 이유</span>
           <input
@@ -423,6 +469,34 @@ function PlanSheet({ s, a }: { s: HoldState; a: HoldActions }) {
           />
         </div>
       </div>
+
+      {isBuy && (
+        <div
+          style={{
+            marginTop: 10,
+            background: 'rgba(255,255,255,0.06)',
+            border: `1px solid ${insufficient ? 'rgba(255,107,119,0.5)' : 'rgba(255,255,255,0.1)'}`,
+            borderRadius: 14,
+            padding: '11px 14px',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+            <span style={{ color: '#99A1B3' }}>모의 매수 (실거래 아님)</span>
+            <span style={{ ...monoNum, color: '#F2F4F8' }}>
+              {fmtWon(buyPrice)} × {s.pQty}주 = <b>{fmtWon(buyCost)}</b>
+            </span>
+          </div>
+          <div style={{ marginTop: 5, display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#7A8296' }}>
+            <span>보유 모의 현금</span>
+            <span style={monoNum}>{fmtWon(s.cash)}</span>
+          </div>
+          {insufficient && (
+            <div style={{ marginTop: 7, fontSize: 11, fontWeight: 600, color: '#FF8A93' }}>
+              모의 현금이 부족해요 — 수량을 줄여볼까요?
+            </div>
+          )}
+        </div>
+      )}
 
       {pComplete && (
         <>
@@ -460,8 +534,20 @@ function PlanSheet({ s, a }: { s: HoldState; a: HoldActions }) {
             )}
           </div>
           {aiDecided && (
-            <button onClick={a.submitPlan} style={{ marginTop: 14, width: '100%', height: 52, borderRadius: 14, fontSize: 14, ...redCta }}>
-              이 알을 품는다
+            <button
+              onClick={a.submitPlan}
+              disabled={insufficient}
+              style={{
+                marginTop: 14,
+                width: '100%',
+                height: 52,
+                borderRadius: 14,
+                fontSize: 14,
+                ...redCta,
+                ...(insufficient ? { opacity: 0.4, cursor: 'not-allowed' } : {}),
+              }}
+            >
+              {isBuy ? '모의 매수하고 알을 품는다' : '이 알을 품는다'}
             </button>
           )}
         </>

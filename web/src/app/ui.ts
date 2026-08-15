@@ -32,3 +32,8 @@ export const ghostBtn: CSSProperties = {
   color: '#F2F4F8',
   fontWeight: 700,
 }
+
+/** 12480000 → "12,480,000원" */
+export function fmtWon(n: number): string {
+  return `${Math.round(n).toLocaleString('ko-KR')}원`
+}

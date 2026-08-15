@@ -6,7 +6,7 @@ import type { Egg } from '../model'
  * 시작 = 진입가, 끝 = 손절가 + 진행률 × (익절가 − 손절가) — 게이지 진행률과 일치.
  */
 
-const ENTRY: Record<string, number> = {
+export const ENTRY: Record<string, number> = {
   삼성전자: 70_000,
   SK하이닉스: 180_000,
   NAVER: 195_000,
@@ -53,7 +53,7 @@ const START_MS = Date.UTC(2025, 5, 20) // 2025-06-20 고정 (결정적)
 const POINTS = 40
 
 export function eggChart(egg: Egg): EggChart {
-  const entry = ENTRY[egg.name] ?? 10_000
+  const entry = egg.entry ?? ENTRY[egg.name] ?? 10_000
   const planned = egg.stop != null && egg.target != null && egg.stage !== 'wild'
   const stopPrice = planned ? entry * (1 - (egg.stop as number) / 100) : undefined
   const takePrice = planned ? entry * (1 + (egg.target as number) / 100) : undefined

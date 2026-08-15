@@ -6,6 +6,9 @@ export const initialEggs: Egg[] = [
     id: 'ss',
     name: '삼성전자',
     qty: '50주',
+    qtyN: 50,
+    code: '005930',
+    entry: 70_000,
     stop: 7,
     target: 15,
     days: 60,
@@ -21,6 +24,9 @@ export const initialEggs: Egg[] = [
     id: 'sk',
     name: 'SK하이닉스',
     qty: '20주',
+    qtyN: 20,
+    code: '000660',
+    entry: 180_000,
     stop: 8,
     target: 20,
     days: 30,
@@ -31,11 +37,14 @@ export const initialEggs: Egg[] = [
     memoL: '9월 22일의 너',
     memoQ: 'HBM 수요 증가, 한 달은 본다',
   },
-  { id: 'nv', name: 'NAVER', qty: '10주', stage: 'wild' },
+  { id: 'nv', name: 'NAVER', qty: '10주', qtyN: 10, code: '035420', entry: 195_000, stage: 'wild' },
   {
     id: 'kk0',
     name: '카카오',
     qty: '30주',
+    qtyN: 30,
+    code: '035720',
+    entry: 48_000,
     stop: 5,
     target: 10,
     days: 30,
@@ -46,7 +55,8 @@ export const initialEggs: Egg[] = [
     memoL: '10월 1일의 너',
     memoQ: '신사업 발표 기대',
   },
-  { id: 'lg', name: 'LG에너지솔루션', qty: '5주', stage: 'shield' },
+  // shield = 손절 회수 완료 — 보유분 아님(회수 현금은 시드에 포함됐다고 본다)
+  { id: 'lg', name: 'LG에너지솔루션', qty: '5주', qtyN: 5, code: '373220', stage: 'shield' },
 ]
 
 /** 부화 이력 — 새 계획 생성 시 조회해 알/사육 결정 */

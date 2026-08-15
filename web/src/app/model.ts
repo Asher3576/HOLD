@@ -6,6 +6,14 @@ export interface Egg {
   id: string
   name: string
   qty: string
+  /** 보유 수량 (숫자) — 모의 계좌 평가액 계산용 */
+  qtyN?: number
+  /** 종목 코드 (KR 6자리) — 실시세 매핑. 없으면 목데이터로만 동작 */
+  code?: string
+  /** 모의 매수 진입가 (원) */
+  entry?: number
+  /** 실시세 현재가 (quotes 수신 시 갱신) */
+  price?: number
   /** 손절선 % (양수 저장, −표기) */
   stop?: number
   /** 익절선 % */
@@ -53,3 +61,15 @@ export const DIAL_BASE = 1.5
 export const DIAL_STEP = 0.4
 /** 매도 확정 전 카운트다운 (초) */
 export const SELL_COUNTDOWN = 15
+
+/** 모의 계좌 시드 현금 (임의 금액) */
+export const SEED_CASH = 10_000_000
+
+/** 종목명 → KR 코드 (실시세 매핑) */
+export const SYMBOL_CODE: Record<string, string> = {
+  삼성전자: '005930',
+  SK하이닉스: '000660',
+  NAVER: '035420',
+  카카오: '035720',
+  LG에너지솔루션: '373220',
+}

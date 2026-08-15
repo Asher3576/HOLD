@@ -11,7 +11,7 @@ import { FruitSvg } from './app/components/svg'
 import type { HoldiePose } from './app/components/holdie/Holdie'
 
 export default function App() {
-  const { s, actions: a, chartRef } = useHold()
+  const { s, actions: a, chartRef, portfolio, execPrice } = useHold()
 
   const tired = s.openCount > 5
   const vaultBusy = s.vaultPhase === 'dialing' || s.vaultPhase === 'open'
@@ -129,6 +129,8 @@ export default function App() {
               phase={s.vaultPhase}
               dialDur={s.dialDur}
               openCount={s.openCount}
+              portfolio={portfolio}
+              live={s.live}
               onDown={a.vaultDown}
               onUp={a.vaultUp}
             />
@@ -175,7 +177,7 @@ export default function App() {
             🎙 홀디랑 3분 복기
           </button>
 
-          <Sheets s={s} a={a} />
+          <Sheets s={s} a={a} execPrice={execPrice} />
 
           {/* 열매 플라잉 */}
           {s.flyOn && (

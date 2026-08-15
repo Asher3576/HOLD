@@ -1,21 +1,35 @@
-import { glass, monoNum } from '../ui'
+import { fmtWon, glass, monoNum } from '../ui'
 import { DIAL_BASE, DIAL_STEP, type VaultPhase } from '../model'
 import { VaultSvg } from './svg'
+
+export interface Portfolio {
+  cash: number
+  stockValue: number
+  total: number
+  profit: number
+  costBasis: number
+}
 
 /** 금고 — 확인 마찰. 길게 누르면 다이얼, 열수록 느려짐. 금액은 여기서만. */
 export default function VaultCard({
   phase,
   dialDur,
   openCount,
+  portfolio,
+  live,
   onDown,
   onUp,
 }: {
   phase: VaultPhase
   dialDur: number
   openCount: number
+  portfolio: Portfolio
+  live: boolean
   onDown: (e: React.PointerEvent) => void
   onUp: () => void
 }) {
+  const profitPct = portfolio.costBasis > 0 ? (portfolio.profit / portfolio.costBasis) * 100 : 0
+  const up = portfolio.profit >= 0
   const tired = openCount > 5
   const filled = Math.min(openCount, 5)
   const nextDur = Math.round((DIAL_BASE + (openCount + 1) * DIAL_STEP) * 10) / 10
@@ -51,18 +65,24 @@ export default function VaultCard({
             boxShadow: 'inset 0 0 40px rgba(87,199,164,0.08)',
           }}
         >
-          <div style={{ fontSize: 10, letterSpacing: 1.5, color: '#7A8296' }}>총 평가액</div>
-          <div style={{ ...monoNum, fontSize: 26, fontWeight: 700, color: '#F2F4F8' }}>
-            12,480,000원
+          <div style={{ fontSize: 10, letterSpacing: 1.5, color: '#7A8296' }}>
+            모의 계좌 총 평가액
           </div>
-          <div style={{ ...monoNum, fontSize: 12, color: '#E36A5C' }}>+340,000원 · +2.8%</div>
+          <div style={{ ...monoNum, fontSize: 26, fontWeight: 700, color: '#F2F4F8' }}>
+            {fmtWon(portfolio.total)}
+          </div>
+          <div style={{ ...monoNum, fontSize: 12, color: up ? '#E36A5C' : '#7FA8E8' }}>
+            {up ? '+' : '−'}
+            {fmtWon(Math.abs(portfolio.profit))} · {up ? '+' : '−'}
+            {Math.abs(profitPct).toFixed(1)}%
+          </div>
           <div style={{ ...monoNum, fontSize: 10.5, marginTop: 3 }}>
-            <span style={{ color: '#57C7A4' }}>지켜서 +1,840,000</span>
+            <span style={{ color: '#99A1B3' }}>현금 {fmtWon(portfolio.cash)}</span>
             <span style={{ color: '#7A8296' }}> · </span>
-            <span style={{ color: '#99A1B3' }}>어겨서 −520,000</span>
+            <span style={{ color: '#99A1B3' }}>주식 {fmtWon(portfolio.stockValue)}</span>
           </div>
           <div style={{ marginTop: 2, fontSize: 9.5, color: '#5A6170' }}>
-            여기서만 보여요 · 손 떼면 닫혀
+            여기서만 보여요 · 손 떼면 닫혀 · {live ? '토스증권 지연시세' : '목데이터 (시세 연결 전)'}
           </div>
         </div>
       ) : (

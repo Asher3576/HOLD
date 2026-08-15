@@ -5,15 +5,53 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import type { Egg, Fruit, PlanMode, SheetKind, VaultPhase } from './model'
-import { DIAL_BASE, DIAL_STEP, SELL_COUNTDOWN } from './model'
+import { DIAL_BASE, DIAL_STEP, SEED_CASH, SELL_COUNTDOWN, SYMBOL_CODE } from './model'
 import { initialEggs, initialHatchedMap } from './mock/design'
+import { ENTRY } from './mock/prices'
+import { fetchQuotes, type Quote } from './lib/api'
+import { fmtWon } from './ui'
 import { y2p } from './ext/chartMath'
+
+/**
+ * 실시세 수신 → 현재가 반영 + 목 진입가를 실가격 기준으로 리베이스.
+ * 목 진입가(7만 삼성전자 등)와 실제 주가의 괴리로 진행률이 0/100에 붙는 것을 막기 위해,
+ * "설계된 진행률(prog)이 현재 실가격 위치가 되도록" 진입가를 역산한다.
+ *   price = entry × (1 − stop% + prog × (stop%+target%))  →  entry 역산
+ * 이후 평가손익 = Σ 수량 × (현재가 − 진입가) 로 일관.
+ */
+function applyQuotes(eggs: Egg[], quotes: Record<string, Quote>): Egg[] {
+  return eggs.map((g) => {
+    const q = g.code ? quotes[g.code] : undefined
+    if (!q || !Number.isFinite(q.price) || q.price <= 0) return g
+    const next: Egg = { ...g, price: q.price }
+    const planned =
+      g.stop != null && g.target != null &&
+      (g.stage === 'plain' || g.stage === 'crack' || g.stage === 'creature' || g.stage === 'expiry')
+    if (planned) {
+      const s = g.stop! / 100
+      const t = g.target! / 100
+      const p = (g.prog ?? 50) / 100
+      const denom = 1 - s + p * (s + t)
+      if (denom > 0) next.entry = Math.round(q.price / denom)
+    } else if (next.entry == null) {
+      next.entry = q.price // 야생알 — 기준가 없으면 현재가
+    }
+    return next
+  })
+}
 
 export interface HoldState {
   surf: 'web' | 'ext'
   vaultPhase: VaultPhase
   dialDur: number
   openCount: number
+  /** 모의 계좌 현금 (임의 시드) */
+  cash: number
+  /** 실시세 (code → quote). 비어 있으면 목데이터 모드 */
+  quotes: Record<string, Quote>
+  live: boolean
+  /** 새 알 품기 — 모의 매수 수량 */
+  pQty: number
   newsOpen: boolean
   celebrating: boolean
   flyOn: boolean
@@ -52,6 +90,10 @@ const initial: HoldState = {
   vaultPhase: 'rest',
   dialDur: 1.9,
   openCount: 2,
+  cash: SEED_CASH,
+  quotes: {},
+  live: false,
+  pQty: 10,
   newsOpen: false,
   celebrating: false,
   flyOn: false,
@@ -121,6 +163,34 @@ export function useHold() {
     [],
   )
 
+  // 실시세 로드 (토스증권 → 스토커스클럽 엣지 → HOLD prices 프록시). 실패 시 목데이터 유지.
+  useEffect(() => {
+    let on = true
+    const codes = Array.from(
+      new Set(
+        sRef.current.eggs.map((g) => g.code).filter((c): c is string => !!c),
+      ),
+    )
+    if (!codes.length) return
+    fetchQuotes(codes).then((quotes) => {
+      if (!on || !quotes) return
+      set((st) => ({ quotes, live: true, eggs: applyQuotes(st.eggs, quotes) }))
+    })
+    return () => {
+      on = false
+    }
+  }, [])
+
+  /** 종목명 기준 모의 체결가: 실시세 → 목 진입가 → 10,000원 */
+  const execPrice = (name: string): number => {
+    const code = SYMBOL_CODE[name]
+    const q = code ? sRef.current.quotes[code] : undefined
+    if (q && Number.isFinite(q.price) && q.price > 0) return q.price
+    return ENTRY[name] ?? 10_000
+  }
+  /** 알의 현재 평가 단가 */
+  const eggPrice = (g: Egg): number => g.price ?? g.entry ?? ENTRY[g.name] ?? 0
+
   const showToast = (msg: string) => {
     clearTimeout(toastT.current)
     set({ toast: msg })
@@ -166,6 +236,7 @@ export function useHold() {
       pStop: pre?.stop ?? 3,
       pTarget: pre?.target ?? 12,
       pDays: 30,
+      pQty: 10,
       pReason: '',
       pAi: null,
       surf: 'web',
@@ -226,22 +297,24 @@ export function useHold() {
     const st = sRef.current
     const egg = st.eggs.find((g) => g.id === st.sheetEgg)
     clearInterval(cdI.current)
+    const proceeds = egg?.qtyN ? egg.qtyN * eggPrice(egg) : 0
     set((prev) => ({
       eggs: prev.eggs.filter((g) => g.id !== prev.sheetEgg),
+      cash: prev.cash + proceeds,
       sheet: null,
       changing: false,
       cd: null,
       changeReason: '',
     }))
     showToast(
-      (egg ? `${egg.name} ` : '') +
-        (egg?.stage === 'creature' ? '사육을 중단했어' : '판다고 기록했어') +
-        ' — 실제 매도는 증권사 앱에서. 이유는 적어뒀어.',
+      (egg ? `${egg.name} ${egg.qty} 모의 매도 체결 · ${fmtWon(proceeds)} 회수` : '모의 매도 체결') +
+        (egg?.stage === 'creature' ? ' — 사육 중단' : '') +
+        '. 실거래는 없어 — 이유는 적어뒀어.',
     )
   }
 
   // ─── 계획(알 만들기) ────────────────────────────────────────────────────
-  const adj = (key: 'pStop' | 'pTarget' | 'pDays', d: number, min: number, max: number) =>
+  const adj = (key: 'pStop' | 'pTarget' | 'pDays' | 'pQty', d: number, min: number, max: number) =>
     set((st) => ({ [key]: Math.max(min, Math.min(max, st[key] + d)) }) as Partial<HoldState>)
 
   const applySug = () => set({ pAi: 'applied', pStop: 7 })
@@ -249,12 +322,17 @@ export function useHold() {
 
   const submitPlan = () => {
     const st = sRef.current
-    const mk = (id: string, name: string, qty: string): Egg => {
+    // 계획 기준가 = 계획 시작 시점 체결/현재가 (실시세 우선)
+    const mk = (id: string, name: string, qtyN: number, entryPrice: number): Egg => {
       const lv = st.hatchedMap[name] || 0
       return {
         id,
         name,
-        qty,
+        qty: `${qtyN}주`,
+        qtyN,
+        code: SYMBOL_CODE[name],
+        entry: entryPrice,
+        price: entryPrice,
         stop: st.pStop,
         target: st.pTarget,
         days: st.pDays,
@@ -268,17 +346,20 @@ export function useHold() {
       }
     }
     if (st.pMode === 'wild') {
+      // 이미 보유 중인 야생알에 계획만 붙임 — 매수 없음
       set((prev) => ({
-        eggs: prev.eggs.map((g) => (g.id === 'nv' ? mk('nv', 'NAVER', '10주') : g)),
+        eggs: prev.eggs.map((g) => (g.id === 'nv' ? mk('nv', 'NAVER', g.qtyN ?? 10, execPrice('NAVER')) : g)),
         sheet: null,
         justAdded: 'nv',
       }))
       celebrate()
       showToast('NAVER에 계획을 붙였어.')
     } else if (st.pMode === 'renew') {
+      // 재계약 — 보유 유지, 기준가만 현재가로 리셋. 매매 없음
       set((prev) => {
         const hm = { ...prev.hatchedMap, 카카오: (prev.hatchedMap['카카오'] || 0) + 1 }
-        const kk = mk('kk', '카카오', '30주')
+        const old = prev.eggs.find((g) => g.id === 'kk0')
+        const kk = mk('kk', '카카오', old?.qtyN ?? 30, execPrice('카카오'))
         kk.stage = 'creature'
         kk.lv = hm['카카오']
         return {
@@ -294,22 +375,34 @@ export function useHold() {
       celebrate()
       showToast('카카오 부화! 이제 사육이야 — 완주할 때마다 Lv이 올라.')
     } else {
+      // 새 알 = 모의 매수 (실거래 아님)
+      const name = st.pName.trim() || '새 종목'
+      const price = execPrice(name)
+      const cost = st.pQty * price
+      if (cost > st.cash) {
+        showToast(`모의 현금이 부족해 — 필요 ${fmtWon(cost)}, 보유 ${fmtWon(st.cash)}`)
+        return
+      }
       const id = `new${Date.now()}`
       set((prev) => ({
-        eggs: [...prev.eggs, mk(id, st.pName.trim() || '새 종목', '')],
+        eggs: [...prev.eggs, mk(id, name, st.pQty, price)],
+        cash: prev.cash - cost,
         sheet: null,
         justAdded: id,
       }))
       celebrate()
-      showToast('새 알을 선반에 놓았어.')
+      showToast(`${name} ${st.pQty}주 모의 매수 체결 · ${fmtWon(cost)} — 새 알을 선반에 놓았어.`)
     }
   }
 
   // ─── 만기 알 ───────────────────────────────────────────────────────────
   const expiryRenew = () => openPlan('renew', 'kk0')
   const expirySend = () => {
+    const egg = sRef.current.eggs.find((g) => g.id === 'kk0')
+    const proceeds = egg?.qtyN ? egg.qtyN * eggPrice(egg) : 0
     set((prev) => ({
       eggs: prev.eggs.filter((g) => g.id !== 'kk0'),
+      cash: prev.cash + proceeds,
       hatch5: true,
       hatchN: 5,
       hatchRate: 38,
@@ -317,7 +410,7 @@ export function useHold() {
       hatchedMap: { ...prev.hatchedMap, 카카오: 1 },
     }))
     celebrate()
-    showToast('카카오 완주 — 부화해서 도감에 올라갔어.')
+    showToast(`카카오 완주 — 모의 매도 ${fmtWon(proceeds)} 회수, 부화해서 도감에 올라갔어.`)
   }
 
   // ─── 복기 ──────────────────────────────────────────────────────────────
@@ -385,10 +478,30 @@ export function useHold() {
     showToast(`확장에서 가져왔어 — 손절 −${stopPct}% · 익절 +${tgtPct}%`)
   }
 
+  // 모의 계좌 요약 (금고에서만 노출) — 평가손익 = Σ 수량 × (현재가 − 진입가)
+  let costBasis = 0
+  let stockValue = 0
+  for (const g of s.eggs) {
+    if (g.stage === 'shield' || !g.qtyN) continue
+    const e = g.entry ?? ENTRY[g.name] ?? 0
+    const p = g.price ?? e
+    costBasis += g.qtyN * e
+    stockValue += g.qtyN * p
+  }
+  const portfolio = {
+    cash: s.cash,
+    stockValue,
+    total: s.cash + stockValue,
+    profit: stockValue - costBasis,
+    costBasis,
+  }
+
   return {
     s,
     set,
     chartRef,
+    portfolio,
+    execPrice,
     actions: {
       vaultDown,
       vaultUp,
