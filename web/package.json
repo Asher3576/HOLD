@@ -14,6 +14,7 @@
   "dependencies": {
     "@hold/shared": "workspace:*",
     "@supabase/supabase-js": "^2.49.8",
+    "lightweight-charts": "^5.2.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

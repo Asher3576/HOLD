@@ -1,9 +1,12 @@
 /** 바텀시트 4종 — 알 상세 / 매도 개입 / 새 알 품기 / 홀디랑 복기 */
+import { useMemo } from 'react'
 import type { HoldState, HoldActions } from '../useHold'
 import { sellRecData } from '../mock/design'
+import { eggChart } from '../mock/prices'
 import { reviewTags } from '../review'
 import { ghostBtn, monoNum, redCta } from '../ui'
 import Holdie from './holdie/Holdie'
+import PriceChart, { type PlanLine } from './PriceChart'
 import { ShieldIcon } from './svg'
 import { ReviewChips } from './ReviewRecordCard'
 
@@ -45,11 +48,22 @@ export default function Sheets({ s, a }: { s: HoldState; a: HoldActions }) {
 // ─── 알 상세 ────────────────────────────────────────────────────────────────
 function DetailSheet({ s, a }: { s: HoldState; a: HoldActions }) {
   const d = s.eggs.find((g) => g.id === s.sheetEgg) ?? s.eggs[0]
-  if (!d) return null
-  const dWild = d.stage === 'wild'
-  const dShield = d.stage === 'shield'
-  const dNear = !dWild && !dShield && (d.prog ?? 0) > 80
-  const isCreature = d.stage === 'creature'
+  const dWild = d?.stage === 'wild'
+  const dShield = d?.stage === 'shield'
+  const dNear = !dWild && !dShield && (d?.prog ?? 0) > 80
+  const isCreature = d?.stage === 'creature'
+
+  // 차트 데이터·계획선 — 알이 바뀔 때만 재계산 (토스트 등 리렌더에 차트 재생성 방지)
+  const chart = useMemo(() => (d ? eggChart(d) : null), [d])
+  const chartLines = useMemo<PlanLine[]>(() => {
+    if (!chart) return []
+    const ls: PlanLine[] = []
+    if (chart.stopPrice != null) ls.push({ price: chart.stopPrice, color: '#FF6B77', title: '손절선' })
+    if (chart.takePrice != null) ls.push({ price: chart.takePrice, color: '#57C7A4', title: '익절선' })
+    return ls
+  }, [chart])
+
+  if (!d || !chart) return null
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
@@ -61,6 +75,24 @@ function DetailSheet({ s, a }: { s: HoldState; a: HoldActions }) {
           </span>
         )}
       </div>
+
+      {/* 주가 흐름 — 간단 선 차트 (시세만, 수익률·평가금액 없음). 익절 근처면 게이지처럼 블러. */}
+      {!dShield && (
+        <div style={{ marginTop: 14, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: '12px 8px 6px' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', padding: '0 8px' }}>
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: '#7A8296' }}>주가 흐름</span>
+            <span style={{ fontSize: 9.5, color: '#5A6170' }}>지연시세 기준</span>
+          </div>
+          <div style={{ marginTop: 6, filter: dNear ? 'blur(2.5px)' : undefined, opacity: dNear ? 0.75 : 1 }}>
+            <PriceChart data={chart.data} lines={chartLines} height={150} />
+          </div>
+          {dNear && (
+            <div style={{ padding: '4px 8px 6px', textAlign: 'center', fontSize: 10.5, color: '#57C7A4' }}>
+              익절선 근처라 차트도 살짝 가렸어 — 계획을 믿어요
+            </div>
+          )}
+        </div>
+      )}
 
       {dShield && (
         <>
