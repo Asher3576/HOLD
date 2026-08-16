@@ -22,8 +22,10 @@ interface Level {
 
 let tabId: number | null = null
 let symbol: string | null = null
+let symbolLabel = ''
 let quote: Quote | null = null
 let levels: Level[] = []
+let closesG: number[] = []
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 
@@ -135,6 +137,7 @@ const fmt = (n: number, currency = 'KRW') =>
 // ─── 데이터 로드 ──────────────────────────────────────────────────────────
 async function loadSymbol(code: string, label: string) {
   symbol = code
+  symbolLabel = label
   $('symEmpty').style.display = 'none'
   $('symInfo').style.display = 'block'
   $('symName').textContent = label
@@ -152,12 +155,27 @@ async function loadSymbol(code: string, label: string) {
       fetch(`${FN}/klines?symbol=${encodeURIComponent(code)}&limit=90`).then((r) => r.json()),
     ])
     quote = q0
+    const closes: number[] = (kRes?.candles ?? []).map((c: { close: number }) => c.close).filter((v: number) => v > 0)
+    closesG = closes
     if (!quote) {
       // 엣지 콜드스타트/KIS 토큰 발급 직후 순간 실패 — 1.5초 뒤 한 번 더
       await new Promise((r) => setTimeout(r, 1500))
       quote = await getQuote()
     }
-    const closes: number[] = (kRes?.candles ?? []).map((c: { close: number }) => c.close).filter((v: number) => v > 0)
+    let basis = '지연시세 기준'
+    if (!quote && closes.length >= 2) {
+      // 시세 실패 시 일봉 종가로 폴백 — 화면이 죽지 않게
+      const last = closes[closes.length - 1]
+      const prev = closes[closes.length - 2]
+      quote = {
+        price: last,
+        changePercent: prev > 0 ? ((last - prev) / prev) * 100 : null,
+        previousClose: prev,
+        currency: /^\d{6}$/.test(code) ? 'KRW' : 'USD',
+      }
+      basis = '최근 종가 기준'
+    }
+    $('symBasis').textContent = basis
     if (quote) {
       $('symPrice').textContent = fmt(quote.price, quote.currency)
       const ch = quote.changePercent
@@ -173,8 +191,120 @@ async function loadSymbol(code: string, label: string) {
     }
     levels = quote && closes.length >= 10 ? swingLevels(closes, quote.price) : []
     renderLevels()
+    renderTrend()
+    renderFacts()
+    void loadNews()
   } catch {
     $('symPrice').textContent = '연결 실패'
+  }
+}
+
+// ─── 추세 (SMA20/60 — 사실만) ─────────────────────────────────────────────
+function smaAt(a: number[], n: number, back = 0): number | null {
+  const end = a.length - back
+  if (end - n < 0) return null
+  const s = a.slice(end - n, end)
+  return s.reduce((x, y) => x + y, 0) / n
+}
+
+function trendLine(closes: number[], n: number, slopeBack: number): { dir: string; text: string } | null {
+  const last = closes[closes.length - 1]
+  const now = smaAt(closes, n)
+  const before = smaAt(closes, n, slopeBack)
+  if (now == null || before == null) return null
+  const above = last > now
+  const rising = now > before
+  const falling = now < before
+  const dir = above && rising ? '상승' : !above && falling ? '하락' : '횡보'
+  return {
+    dir,
+    text: `종가가 ${n}일선 ${above ? '위' : '아래'} · ${n}일선 ${rising ? '우상향' : falling ? '우하향' : '수평'}`,
+  }
+}
+
+const DIR_COLOR: Record<string, string> = { 상승: '#E36A5C', 하락: '#7FA8E8', 횡보: '#99A1B3' }
+
+function renderTrend() {
+  const card = $('trendCard')
+  const s = trendLine(closesG, 20, 5)
+  const l = trendLine(closesG, 60, 10)
+  if (!s && !l) {
+    card.style.display = 'none'
+    return
+  }
+  card.style.display = 'block'
+  const mk = (label: string, t: { dir: string; text: string } | null) =>
+    t
+      ? `<span style="color:#7A8296">${label}</span> <b style="color:${DIR_COLOR[t.dir]}">${t.dir}</b> <span style="color:#99A1B3">— ${t.text}</span>`
+      : `<span style="color:#7A8296">${label}</span> <span style="color:#5A6170">데이터 부족</span>`
+  $('trendShort').innerHTML = mk('단기(20일):', s)
+  $('trendLong').innerHTML = mk('장기(60일):', l)
+}
+
+// ─── 특이사항 (계산된 사실) ───────────────────────────────────────────────
+function renderFacts() {
+  const list = $('factList')
+  list.innerHTML = ''
+  if (!quote || closesG.length < 20) return
+  $('newsCard').style.display = 'block'
+  const cur = quote.currency
+  const last = quote.price
+  const hi = Math.max(...closesG)
+  const lo = Math.min(...closesG)
+  const diffs: number[] = []
+  for (let i = closesG.length - 20; i < closesG.length; i++) {
+    if (i <= 0) continue
+    diffs.push(Math.abs((closesG[i] - closesG[i - 1]) / closesG[i - 1]) * 100)
+  }
+  const avgVol = diffs.length ? diffs.reduce((a, b) => a + b, 0) / diffs.length : 0
+  const facts: string[] = []
+  const ch = quote.changePercent
+  if (ch != null && avgVol > 0 && Math.abs(ch) > avgVol * 2) {
+    facts.push(`오늘 변동(${ch >= 0 ? '+' : ''}${ch.toFixed(1)}%)이 평소 하루 평균(±${avgVol.toFixed(1)}%)보다 커요`)
+  }
+  facts.push(`최근 90일 고점(${fmt(hi, cur)}) 대비 ${(((last - hi) / hi) * 100).toFixed(1)}% · 저점(${fmt(lo, cur)}) 대비 +${(((last - lo) / lo) * 100).toFixed(1)}%`)
+  if (avgVol > 0) facts.push(`최근 20일 하루 평균 변동 ±${avgVol.toFixed(1)}%`)
+  for (const f of facts) {
+    const row = document.createElement('div')
+    row.style.cssText = 'font-size:11.5px;line-height:1.55;color:#D6DAE3;padding:3px 0'
+    row.textContent = '· ' + f
+    list.appendChild(row)
+  }
+}
+
+// ─── 뉴스 ─────────────────────────────────────────────────────────────────
+function timeAgo(pub: string): string {
+  const t = new Date(pub).getTime()
+  if (!Number.isFinite(t)) return ''
+  const m = Math.max(0, Math.round((Date.now() - t) / 60_000))
+  if (m < 60) return `${m}분 전`
+  if (m < 1440) return `${Math.round(m / 60)}시간 전`
+  return `${Math.round(m / 1440)}일 전`
+}
+
+async function loadNews() {
+  const list = $('newsList')
+  list.innerHTML = ''
+  const q = (symbolLabel && !/^\d{6}$/.test(symbolLabel) ? symbolLabel : symbol) ?? ''
+  if (!q) return
+  try {
+    const res = await fetch(`${FN}/news?q=${encodeURIComponent(q + ' 주가')}`).then((r) => r.json())
+    const items: Array<{ title: string; link: string; pub: string; source: string }> = res?.items ?? []
+    if (!items.length) return
+    $('newsCard').style.display = 'block'
+    for (const it of items.slice(0, 4)) {
+      const a = document.createElement('a')
+      a.href = it.link
+      a.target = '_blank'
+      a.rel = 'noreferrer'
+      a.style.cssText =
+        'display:block;padding:7px 0;border-top:1px solid rgba(255,255,255,0.07);color:#D6DAE3;font-size:12px;line-height:1.5;text-decoration:none'
+      const meta = [it.source, timeAgo(it.pub)].filter(Boolean).join(' · ')
+      a.innerHTML = `${it.title}${meta ? `<span style="display:block;margin-top:2px;font-size:10px;color:#5A6170">${meta}</span>` : ''}`
+      list.appendChild(a)
+    }
+  } catch {
+    /* 뉴스 실패는 조용히 */
   }
 }
 
@@ -265,6 +395,15 @@ async function send(msg: unknown) {
 }
 
 // ─── 탭 동기화 ────────────────────────────────────────────────────────────
+/** 페이지 텍스트에서 뽑은 라벨이 가격/퍼센트 조각이면 탭 제목 → 코드 순으로 대체 */
+function cleanLabel(raw: string, title: string, code: string): string {
+  const bad = (s: string) => !s || s.length > 20 || /[%₩$]|원|\d[,.]\d|^[\d\s.,+\-]+$/.test(s)
+  if (!bad(raw)) return raw
+  const t = title.split(/[|·:\-–]/)[0].trim()
+  if (!bad(t)) return t
+  return code
+}
+
 let pollTimer: number | undefined
 let pollLeft = 0
 
@@ -279,6 +418,7 @@ async function syncTab(fromPoll = false) {
   let found = detectSymbol(tab.url, tab.title ?? '')
   if (!found && /^https?:/.test(tab.url)) {
     found = await detectFromPage(tab.id)
+    if (found) found.label = cleanLabel(found.label, tab.title ?? '', found.code)
   }
   if (found && found.code !== symbol) {
     clearTimeout(pollTimer)

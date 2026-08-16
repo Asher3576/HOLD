@@ -71,7 +71,7 @@
           <div class="row" style="margin-top:3px">
             <span id="symChange" class="mono" style="font-size:11.5px"></span>
             <span style="flex:1"></span>
-            <span class="faint">지연시세 기준</span>
+            <span class="faint" id="symBasis">지연시세 기준</span>
           </div>
         </div>
       </div>
@@ -87,6 +87,13 @@
       <div id="levelList" style="margin-top:8px"></div>
       <button id="drawLevels" class="cta" style="margin-top:10px">차트에 레벨 긋기</button>
       <div class="faint" style="margin-top:6px">처음 한 번, 화면의 가격 위치 2곳을 클릭해 보정해요</div>
+    </div>
+
+    <!-- 추세 -->
+    <div class="card" id="trendCard" style="display:none">
+      <div class="label">추세 (이동평균 기준 — 사실만)</div>
+      <div id="trendShort" style="margin-top:9px;font-size:12.5px;line-height:1.55"></div>
+      <div id="trendLong" style="margin-top:5px;font-size:12.5px;line-height:1.55"></div>
     </div>
 
     <!-- 작도 -->
@@ -111,6 +118,14 @@
       <div id="rrOut" class="mono" style="margin-top:10px;font-size:18px;font-weight:700">손익비 —</div>
       <div id="rrNote" class="dim" style="font-size:11.5px;margin-top:3px"></div>
       <button id="rrDraw" class="ghost" style="width:100%;margin-top:10px">진입·손절·목표 차트에 긋기</button>
+    </div>
+
+    <!-- 특이사항 · 뉴스 -->
+    <div class="card" id="newsCard" style="display:none">
+      <div class="label">특이사항 · 뉴스</div>
+      <div id="factList" style="margin-top:8px"></div>
+      <div id="newsList" style="margin-top:4px"></div>
+      <div class="faint" style="margin-top:7px">계산된 사실과 헤드라인만 — 해석·지시 없음</div>
     </div>
 
     <div class="faint" style="margin-top:12px;line-height:1.6">

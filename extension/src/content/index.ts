@@ -142,10 +142,15 @@ if (!w.__HOLD_CS__) {
       }
     }
     ctx.restore()
-    // 라벨은 클립 밖에서 (영역 우측 끝 기준)
+    // 라벨은 클립 밖에서 (영역 우측 끝 기준).
+    // 수평선은 가격 보정이 돼 있을 때만 가격 라벨 — 픽셀 좌표는 표시하지 않는다.
     for (const d of drawings) {
-      if (d.type === 'level') tag(d.label, R.x + R.w - 8, d.y, COLOR[d.kind], true)
-      else if (d.type === 'h') tag(`${Math.round(d.y)}`, R.x + R.w - 8, d.y, '#F5B23E', true)
+      if (d.type === 'level') {
+        tag(d.label, R.x + R.w - 8, d.y, COLOR[d.kind], true)
+      } else if (d.type === 'h') {
+        const p = yToPrice(d.y)
+        if (p != null) tag(fmt(p), R.x + R.w - 8, d.y, '#F5B23E', true)
+      }
     }
 
     if (drag) {
@@ -348,6 +353,12 @@ if (!w.__HOLD_CS__) {
   function priceToY(price: number): number | null {
     if (!calib || calib.p2 === calib.p1) return null
     return calib.y1 + ((price - calib.p1) * (calib.y2 - calib.y1)) / (calib.p2 - calib.p1)
+  }
+
+  /** 역변환 — 보정돼 있으면 수평선에 가격 라벨을 붙일 수 있다 */
+  function yToPrice(y: number): number | null {
+    if (!calib || calib.y2 === calib.y1) return null
+    return calib.p1 + ((y - calib.y1) * (calib.p2 - calib.p1)) / (calib.y2 - calib.y1)
   }
 
   function renderLevels(levels: LevelIn[]) {

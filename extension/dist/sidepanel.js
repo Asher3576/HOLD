@@ -5,8 +5,10 @@
   var APP_URL = "https://hold.vercel.app";
   var tabId = null;
   var symbol = null;
+  var symbolLabel = "";
   var quote = null;
   var levels = [];
+  var closesG = [];
   var $ = (id) => document.getElementById(id);
   function detectSymbol(url, title) {
     try {
@@ -98,6 +100,7 @@
   var fmt = (n, currency = "KRW") => currency === "KRW" ? `${Math.round(n).toLocaleString("ko-KR")}\uC6D0` : `$${(Math.round(n * 100) / 100).toLocaleString("en-US")}`;
   async function loadSymbol(code, label) {
     symbol = code;
+    symbolLabel = label;
     $("symEmpty").style.display = "none";
     $("symInfo").style.display = "block";
     $("symName").textContent = label;
@@ -111,11 +114,25 @@
         fetch(`${FN}/klines?symbol=${encodeURIComponent(code)}&limit=90`).then((r) => r.json())
       ]);
       quote = q0;
+      const closes = (kRes?.candles ?? []).map((c) => c.close).filter((v) => v > 0);
+      closesG = closes;
       if (!quote) {
         await new Promise((r) => setTimeout(r, 1500));
         quote = await getQuote();
       }
-      const closes = (kRes?.candles ?? []).map((c) => c.close).filter((v) => v > 0);
+      let basis = "\uC9C0\uC5F0\uC2DC\uC138 \uAE30\uC900";
+      if (!quote && closes.length >= 2) {
+        const last = closes[closes.length - 1];
+        const prev = closes[closes.length - 2];
+        quote = {
+          price: last,
+          changePercent: prev > 0 ? (last - prev) / prev * 100 : null,
+          previousClose: prev,
+          currency: /^\d{6}$/.test(code) ? "KRW" : "USD"
+        };
+        basis = "\uCD5C\uADFC \uC885\uAC00 \uAE30\uC900";
+      }
+      $("symBasis").textContent = basis;
       if (quote) {
         $("symPrice").textContent = fmt(quote.price, quote.currency);
         const ch = quote.changePercent;
@@ -131,8 +148,105 @@
       }
       levels = quote && closes.length >= 10 ? swingLevels(closes, quote.price) : [];
       renderLevels();
+      renderTrend();
+      renderFacts();
+      void loadNews();
     } catch {
       $("symPrice").textContent = "\uC5F0\uACB0 \uC2E4\uD328";
+    }
+  }
+  function smaAt(a, n, back = 0) {
+    const end = a.length - back;
+    if (end - n < 0) return null;
+    const s = a.slice(end - n, end);
+    return s.reduce((x, y) => x + y, 0) / n;
+  }
+  function trendLine(closes, n, slopeBack) {
+    const last = closes[closes.length - 1];
+    const now = smaAt(closes, n);
+    const before = smaAt(closes, n, slopeBack);
+    if (now == null || before == null) return null;
+    const above = last > now;
+    const rising = now > before;
+    const falling = now < before;
+    const dir = above && rising ? "\uC0C1\uC2B9" : !above && falling ? "\uD558\uB77D" : "\uD6A1\uBCF4";
+    return {
+      dir,
+      text: `\uC885\uAC00\uAC00 ${n}\uC77C\uC120 ${above ? "\uC704" : "\uC544\uB798"} \xB7 ${n}\uC77C\uC120 ${rising ? "\uC6B0\uC0C1\uD5A5" : falling ? "\uC6B0\uD558\uD5A5" : "\uC218\uD3C9"}`
+    };
+  }
+  var DIR_COLOR = { \uC0C1\uC2B9: "#E36A5C", \uD558\uB77D: "#7FA8E8", \uD6A1\uBCF4: "#99A1B3" };
+  function renderTrend() {
+    const card = $("trendCard");
+    const s = trendLine(closesG, 20, 5);
+    const l = trendLine(closesG, 60, 10);
+    if (!s && !l) {
+      card.style.display = "none";
+      return;
+    }
+    card.style.display = "block";
+    const mk = (label, t) => t ? `<span style="color:#7A8296">${label}</span> <b style="color:${DIR_COLOR[t.dir]}">${t.dir}</b> <span style="color:#99A1B3">\u2014 ${t.text}</span>` : `<span style="color:#7A8296">${label}</span> <span style="color:#5A6170">\uB370\uC774\uD130 \uBD80\uC871</span>`;
+    $("trendShort").innerHTML = mk("\uB2E8\uAE30(20\uC77C):", s);
+    $("trendLong").innerHTML = mk("\uC7A5\uAE30(60\uC77C):", l);
+  }
+  function renderFacts() {
+    const list = $("factList");
+    list.innerHTML = "";
+    if (!quote || closesG.length < 20) return;
+    $("newsCard").style.display = "block";
+    const cur = quote.currency;
+    const last = quote.price;
+    const hi = Math.max(...closesG);
+    const lo = Math.min(...closesG);
+    const diffs = [];
+    for (let i = closesG.length - 20; i < closesG.length; i++) {
+      if (i <= 0) continue;
+      diffs.push(Math.abs((closesG[i] - closesG[i - 1]) / closesG[i - 1]) * 100);
+    }
+    const avgVol = diffs.length ? diffs.reduce((a, b) => a + b, 0) / diffs.length : 0;
+    const facts = [];
+    const ch = quote.changePercent;
+    if (ch != null && avgVol > 0 && Math.abs(ch) > avgVol * 2) {
+      facts.push(`\uC624\uB298 \uBCC0\uB3D9(${ch >= 0 ? "+" : ""}${ch.toFixed(1)}%)\uC774 \uD3C9\uC18C \uD558\uB8E8 \uD3C9\uADE0(\xB1${avgVol.toFixed(1)}%)\uBCF4\uB2E4 \uCEE4\uC694`);
+    }
+    facts.push(`\uCD5C\uADFC 90\uC77C \uACE0\uC810(${fmt(hi, cur)}) \uB300\uBE44 ${((last - hi) / hi * 100).toFixed(1)}% \xB7 \uC800\uC810(${fmt(lo, cur)}) \uB300\uBE44 +${((last - lo) / lo * 100).toFixed(1)}%`);
+    if (avgVol > 0) facts.push(`\uCD5C\uADFC 20\uC77C \uD558\uB8E8 \uD3C9\uADE0 \uBCC0\uB3D9 \xB1${avgVol.toFixed(1)}%`);
+    for (const f of facts) {
+      const row = document.createElement("div");
+      row.style.cssText = "font-size:11.5px;line-height:1.55;color:#D6DAE3;padding:3px 0";
+      row.textContent = "\xB7 " + f;
+      list.appendChild(row);
+    }
+  }
+  function timeAgo(pub) {
+    const t = new Date(pub).getTime();
+    if (!Number.isFinite(t)) return "";
+    const m = Math.max(0, Math.round((Date.now() - t) / 6e4));
+    if (m < 60) return `${m}\uBD84 \uC804`;
+    if (m < 1440) return `${Math.round(m / 60)}\uC2DC\uAC04 \uC804`;
+    return `${Math.round(m / 1440)}\uC77C \uC804`;
+  }
+  async function loadNews() {
+    const list = $("newsList");
+    list.innerHTML = "";
+    const q = (symbolLabel && !/^\d{6}$/.test(symbolLabel) ? symbolLabel : symbol) ?? "";
+    if (!q) return;
+    try {
+      const res = await fetch(`${FN}/news?q=${encodeURIComponent(q + " \uC8FC\uAC00")}`).then((r) => r.json());
+      const items = res?.items ?? [];
+      if (!items.length) return;
+      $("newsCard").style.display = "block";
+      for (const it of items.slice(0, 4)) {
+        const a = document.createElement("a");
+        a.href = it.link;
+        a.target = "_blank";
+        a.rel = "noreferrer";
+        a.style.cssText = "display:block;padding:7px 0;border-top:1px solid rgba(255,255,255,0.07);color:#D6DAE3;font-size:12px;line-height:1.5;text-decoration:none";
+        const meta = [it.source, timeAgo(it.pub)].filter(Boolean).join(" \xB7 ");
+        a.innerHTML = `${it.title}${meta ? `<span style="display:block;margin-top:2px;font-size:10px;color:#5A6170">${meta}</span>` : ""}`;
+        list.appendChild(a);
+      }
+    } catch {
     }
   }
   function renderLevels() {
@@ -211,6 +325,13 @@
     } catch {
     }
   }
+  function cleanLabel(raw, title, code) {
+    const bad = (s) => !s || s.length > 20 || /[%₩$]|원|\d[,.]\d|^[\d\s.,+\-]+$/.test(s);
+    if (!bad(raw)) return raw;
+    const t = title.split(/[|·:\-–]/)[0].trim();
+    if (!bad(t)) return t;
+    return code;
+  }
   var pollTimer;
   var pollLeft = 0;
   async function syncTab(fromPoll = false) {
@@ -224,6 +345,7 @@
     let found = detectSymbol(tab.url, tab.title ?? "");
     if (!found && /^https?:/.test(tab.url)) {
       found = await detectFromPage(tab.id);
+      if (found) found.label = cleanLabel(found.label, tab.title ?? "", found.code);
     }
     if (found && found.code !== symbol) {
       clearTimeout(pollTimer);

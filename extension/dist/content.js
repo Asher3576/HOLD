@@ -75,8 +75,12 @@
       }
       ctx.restore();
       for (const d of drawings) {
-        if (d.type === "level") tag(d.label, R.x + R.w - 8, d.y, COLOR[d.kind], true);
-        else if (d.type === "h") tag(`${Math.round(d.y)}`, R.x + R.w - 8, d.y, "#F5B23E", true);
+        if (d.type === "level") {
+          tag(d.label, R.x + R.w - 8, d.y, COLOR[d.kind], true);
+        } else if (d.type === "h") {
+          const p = yToPrice(d.y);
+          if (p != null) tag(fmt(p), R.x + R.w - 8, d.y, "#F5B23E", true);
+        }
       }
       if (drag) {
         if (mode === "region") {
@@ -259,6 +263,9 @@
     }, priceToY = function(price) {
       if (!calib || calib.p2 === calib.p1) return null;
       return calib.y1 + (price - calib.p1) * (calib.y2 - calib.y1) / (calib.p2 - calib.p1);
+    }, yToPrice = function(y) {
+      if (!calib || calib.y2 === calib.y1) return null;
+      return calib.p1 + (y - calib.y1) * (calib.p2 - calib.p1) / (calib.y2 - calib.y1);
     }, renderLevels = function(levels) {
       drawings = drawings.filter((d) => d.type !== "level");
       const R = chartRect();
@@ -312,7 +319,7 @@
       drag = null;
       redraw();
     };
-    autoDetectRegion2 = autoDetectRegion, ensureCanvas2 = ensureCanvas, resize2 = resize, redraw2 = redraw, line2 = line, tag2 = tag, ensureToolbar2 = ensureToolbar, showToast2 = showToast, setMode2 = setMode, startCalibration2 = startCalibration, askSecondPrice2 = askSecondPrice, priceToY2 = priceToY, renderLevels2 = renderLevels, fmt2 = fmt, onDown2 = onDown, onMove2 = onMove, onUp2 = onUp;
+    autoDetectRegion2 = autoDetectRegion, ensureCanvas2 = ensureCanvas, resize2 = resize, redraw2 = redraw, line2 = line, tag2 = tag, ensureToolbar2 = ensureToolbar, showToast2 = showToast, setMode2 = setMode, startCalibration2 = startCalibration, askSecondPrice2 = askSecondPrice, priceToY2 = priceToY, yToPrice2 = yToPrice, renderLevels2 = renderLevels, fmt2 = fmt, onDown2 = onDown, onMove2 = onMove, onUp2 = onUp;
     w.__HOLD_CS__ = true;
     const Z = "2147483640";
     const COLOR = {
@@ -376,6 +383,7 @@
   var startCalibration2;
   var askSecondPrice2;
   var priceToY2;
+  var yToPrice2;
   var renderLevels2;
   var fmt2;
   var onDown2;

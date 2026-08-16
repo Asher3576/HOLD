@@ -30,10 +30,7 @@ function json(body: unknown, status?: number, sMaxAge?: number) {
 // ─── 토큰 (24h 유효 — 유효기간 내 재호출 시 동일 토큰이라 인스턴스 캐시로 충분) ──
 let tokenCache = { token: '', expiresAt: 0 }
 
-async function getToken(): Promise<string | null> {
-  if (!APP_KEY || !APP_SECRET) return null
-  const now = Date.now()
-  if (tokenCache.token && tokenCache.expiresAt - 120_000 > now) return tokenCache.token
+async function issueToken(): Promise<string | null> {
   const res = await fetch(BASE + '/oauth2/tokenP', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -41,10 +38,21 @@ async function getToken(): Promise<string | null> {
     signal: AbortSignal.timeout(10_000),
   })
   const data = await res.json().catch(() => null)
-  const token = data?.access_token
+  return data?.access_token ?? null
+}
+
+async function getToken(): Promise<string | null> {
+  if (!APP_KEY || !APP_SECRET) return null
+  const now = Date.now()
+  if (tokenCache.token && tokenCache.expiresAt - 120_000 > now) return tokenCache.token
+  let token = await issueToken()
+  if (!token) {
+    // 발급 빈도 제한(분당 1회)·순간 오류 — 잠시 후 1회 재시도
+    await new Promise((r) => setTimeout(r, 1200))
+    token = await issueToken()
+  }
   if (!token) return null
-  const expiresIn = Number(data?.expires_in) || 86_400
-  tokenCache = { token, expiresAt: now + expiresIn * 1000 }
+  tokenCache = { token, expiresAt: now + 86_400 * 1000 }
   return token
 }
 
@@ -194,6 +202,32 @@ Deno.serve(async (req) => {
       const quotes: Record<string, unknown> = {}
       for (const [s, q] of results) if (q) quotes[s] = q
       return json({ ok: Object.keys(quotes).length > 0, count: Object.keys(quotes).length, quotes }, 200, 30)
+    }
+
+    if (path.endsWith('/news')) {
+      // 종목 뉴스 — Google News RSS (키 불필요, 서버 파싱). 제목·링크·시각만 전달.
+      const q = (url.searchParams.get('q') ?? '').slice(0, 60)
+      if (!q) return json({ items: [] })
+      const rss = await fetch(
+        'https://news.google.com/rss/search?q=' + encodeURIComponent(q) + '&hl=ko&gl=KR&ceid=KR:ko',
+        { signal: AbortSignal.timeout(10_000) },
+      ).then((r) => r.text())
+      const items: Array<{ title: string; link: string; pub: string; source: string }> = []
+      const re = /<item>([\s\S]*?)<\/item>/g
+      let m: RegExpExecArray | null
+      while ((m = re.exec(rss)) && items.length < 6) {
+        const block = m[1]
+        const pick = (tag: string) => {
+          const mm = block.match(new RegExp(`<${tag}>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?</${tag}>`))
+          return (mm?.[1] ?? '').trim()
+        }
+        const title = pick('title')
+        const link = pick('link')
+        if (title && link) {
+          items.push({ title, link, pub: pick('pubDate'), source: pick('source') })
+        }
+      }
+      return json({ items }, 200, 300)
     }
 
     if (path.endsWith('/klines')) {
