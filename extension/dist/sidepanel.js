@@ -2,7 +2,7 @@
 (() => {
   // src/sidepanel/sidepanel.ts
   var FN = "https://xpjtgmckrazfbyghkeve.supabase.co/functions/v1/prices";
-  var APP_URL_DEFAULT = "";
+  var APP_URL_DEFAULT = "https://hold-web.vercel.app";
   var SUPA = "https://xpjtgmckrazfbyghkeve.supabase.co";
   var ANON = "sb_publishable_YjEDQ3l-0wf3SM23JMTRqQ_R8_eqs9i";
   var SEED_CASH = 1e7;
@@ -1016,7 +1016,7 @@
     if (e.key === "Enter") $("appUrlSave").click();
   });
   void chrome.storage.local.get("appUrl").then((o) => {
-    if (typeof o.appUrl === "string" && o.appUrl) appUrl = o.appUrl;
+    if (typeof o.appUrl === "string" && o.appUrl && o.appUrl !== "https://hold.vercel.app") appUrl = o.appUrl;
     updateAppLink();
   });
   updateAppLink();

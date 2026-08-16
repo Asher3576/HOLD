@@ -5,9 +5,8 @@
  */
 
 const FN = 'https://xpjtgmckrazfbyghkeve.supabase.co/functions/v1/prices'
-// HOLD 웹 배포 주소 — 비워두면 패널에서 한 번 입력받아 저장한다.
-// (자리표시 주소를 넣으면 남의 사이트가 열릴 수 있어 기본값은 반드시 빈 값)
-const APP_URL_DEFAULT = ''
+// HOLD 웹 배포 주소 (실제 버셀 배포) — 저장된 사용자 값이 있으면 그쪽이 우선.
+const APP_URL_DEFAULT = 'https://hold-web.vercel.app'
 // Supabase 퍼블리셔블 키 — 브라우저 노출용 공개 키 (시크릿 아님). 웹앱과 같은 프로젝트/계정.
 const SUPA = 'https://xpjtgmckrazfbyghkeve.supabase.co'
 const ANON = 'sb_publishable_YjEDQ3l-0wf3SM23JMTRqQ_R8_eqs9i'
@@ -1211,7 +1210,8 @@ $<HTMLInputElement>('appUrlIn').addEventListener('keydown', (e) => {
 })
 
 void chrome.storage.local.get('appUrl').then((o) => {
-  if (typeof o.appUrl === 'string' && o.appUrl) appUrl = o.appUrl
+  // 예전 자리표시 주소(남의 도메인)가 저장돼 있으면 무시하고 기본값 사용
+  if (typeof o.appUrl === 'string' && o.appUrl && o.appUrl !== 'https://hold.vercel.app') appUrl = o.appUrl
   updateAppLink()
 })
 updateAppLink()
