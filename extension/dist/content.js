@@ -2,19 +2,33 @@
 (() => {
   // src/content/index.ts
   var w = window;
-  var HOLD_CS_VER = "0.4.1";
+  var HOLD_CS_VER = "0.4.2";
   if (w.__HOLD_CS__ !== HOLD_CS_VER) {
     let autoDetectRegion = function() {
       let best = null;
       let bestArea = 0;
-      for (const el of Array.from(document.querySelectorAll("canvas, iframe"))) {
-        const r = el.getBoundingClientRect();
-        if (r.width < 300 || r.height < 180) continue;
-        if (r.bottom < 0 || r.top > window.innerHeight) continue;
+      const consider = (r, ox = 0, oy = 0) => {
+        if (r.width < 300 || r.height < 180) return;
+        if (r.bottom + oy < 0 || r.top + oy > window.innerHeight) return;
         const area = r.width * r.height;
         if (area > bestArea) {
           bestArea = area;
-          best = { x: r.left, y: r.top, w: r.width, h: r.height };
+          best = { x: r.left + ox, y: r.top + oy, w: r.width, h: r.height };
+        }
+      };
+      for (const el of Array.from(document.querySelectorAll("canvas, iframe"))) {
+        consider(el.getBoundingClientRect());
+        if (el.tagName === "IFRAME") {
+          try {
+            const d = el.contentDocument;
+            if (d) {
+              const fr = el.getBoundingClientRect();
+              for (const c of Array.from(d.querySelectorAll("canvas"))) {
+                consider(c.getBoundingClientRect(), fr.left, fr.top);
+              }
+            }
+          } catch {
+          }
         }
       }
       if (best) region = best;
@@ -266,25 +280,42 @@
       const R = region;
       const right = [];
       const left = [];
+      const docs = [];
+      if (document.body) docs.push({ body: document.body, ox: 0, oy: 0 });
       try {
-        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-        let node;
-        let seen = 0;
-        while ((node = walker.nextNode()) && seen < 4e3) {
-          seen++;
-          const s = (node.nodeValue ?? "").trim();
-          if (!/^[\d,]+(?:\.\d+)?$/.test(s)) continue;
-          const p = Number(s.replace(/,/g, ""));
-          if (!(p > 0)) continue;
-          const el = node.parentElement;
-          if (!el) continue;
-          const r = el.getBoundingClientRect();
-          if (!r.width || r.height > 36 || r.width > 150) continue;
-          const cy = r.top + r.height / 2;
-          const cx = r.left + r.width / 2;
-          if (cy < R.y - 10 || cy > R.y + R.h + 10) continue;
-          if (cx >= R.x + R.w * 0.72 && cx <= R.x + R.w + 90) right.push({ y: cy, p });
-          else if (cx >= R.x - 90 && cx <= R.x + R.w * 0.28) left.push({ y: cy, p });
+        for (const f of Array.from(document.querySelectorAll("iframe")).slice(0, 10)) {
+          try {
+            const d = f.contentDocument;
+            if (d?.body) {
+              const fr = f.getBoundingClientRect();
+              docs.push({ body: d.body, ox: fr.left, oy: fr.top });
+            }
+          } catch {
+          }
+        }
+      } catch {
+      }
+      try {
+        for (const { body, ox, oy } of docs) {
+          const walker = (body.ownerDocument ?? document).createTreeWalker(body, NodeFilter.SHOW_TEXT);
+          let node;
+          let seen = 0;
+          while ((node = walker.nextNode()) && seen < 4e3) {
+            seen++;
+            const s = (node.nodeValue ?? "").trim();
+            if (!/^[\d,]+(?:\.\d+)?$/.test(s)) continue;
+            const p = Number(s.replace(/,/g, ""));
+            if (!(p > 0)) continue;
+            const el = node.parentElement;
+            if (!el) continue;
+            const r = el.getBoundingClientRect();
+            if (!r.width || r.height > 36 || r.width > 150) continue;
+            const cy = r.top + r.height / 2 + oy;
+            const cx = r.left + r.width / 2 + ox;
+            if (cy < R.y - 10 || cy > R.y + R.h + 10) continue;
+            if (cx >= R.x + R.w * 0.72 && cx <= R.x + R.w + 90) right.push({ y: cy, p });
+            else if (cx >= R.x - 90 && cx <= R.x + R.w * 0.28) left.push({ y: cy, p });
+          }
         }
       } catch {
         return false;

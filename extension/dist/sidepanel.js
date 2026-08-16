@@ -37,6 +37,27 @@
         m = u.pathname.match(/stocks\/([A-Z]{1,6})(?:[/?#]|$)/);
         if (m) return { code: m[1], label: m[1] };
       }
+      if (h.endsWith("google.com")) {
+        m = u.pathname.match(/\/finance\/quote\/([A-Z0-9.]{1,10}):[A-Z]{2,10}/);
+        if (m) return { code: m[1], label: m[1] };
+      }
+      if (h.endsWith("finance.yahoo.com")) {
+        m = u.pathname.match(/\/quote\/([A-Za-z0-9.\-]{1,12})(?:[/?#]|$)/);
+        if (m) {
+          const raw = m[1].toUpperCase();
+          const kr = raw.match(/^(\d{6})\.(?:KS|KQ)$/);
+          const code = kr ? kr[1] : raw.replace(/\..*$/, "");
+          return { code, label: code };
+        }
+      }
+      if (h.endsWith("finance.daum.net")) {
+        m = u.pathname.match(/\/quotes\/A(\d{6})/);
+        if (m) return { code: m[1], label: title.split(/[|·:\-–]/)[0].trim() || m[1] };
+      }
+      m = u.search.match(/[?&](?:code|symbol|ticker|stock_?code|shcode)=A?(\d{6})(?:\D|$)/i);
+      if (m) return { code: m[1], label: title.split(/[|·:\-–]/)[0].trim() || m[1] };
+      m = u.pathname.match(/\/A(\d{6})(?:[/?#.]|$)/);
+      if (m) return { code: m[1], label: title.split(/[|·:\-–]/)[0].trim() || m[1] };
       if (!h.endsWith("stockersclub.com")) {
         m = url.match(/[^0-9a-fA-F](\d{6})(?:[^0-9a-fA-F]|$)/);
         if (m) return { code: m[1], label: title.split(/[:|-]/)[0].trim() || m[1] };
@@ -50,18 +71,37 @@
       const [res] = await chrome.scripting.executeScript({
         target: { tabId: tid },
         func: () => {
+          try {
+            for (const el of Array.from(document.querySelectorAll("[data-symbol],[data-ticker],[data-code]")).slice(0, 20)) {
+              const v = (el.getAttribute("data-symbol") || el.getAttribute("data-ticker") || el.getAttribute("data-code") || "").toUpperCase().replace(/^[A-Z]+:/, "");
+              let m = v.match(/^A?(\d{6})$/);
+              if (m) return { code: m[1], label: m[1] };
+              m = v.match(/^([A-Z]{1,6})$/);
+              if (m) return { code: m[1], label: m[1] };
+            }
+          } catch {
+          }
           const texts = [document.title];
           const og = document.querySelector('meta[property="og:title"]');
           if (og?.content) texts.push(og.content);
-          const h1 = document.querySelector("h1");
-          if (h1?.textContent) texts.push(h1.textContent);
+          for (const sel of ["h1", "h2", '[class*="symbol" i]', '[class*="ticker" i]']) {
+            const el = document.querySelector(sel);
+            if (el?.textContent) texts.push(el.textContent.slice(0, 200));
+          }
           texts.push((document.body?.innerText || "").slice(0, 3e3));
+          const NOT_TICKER = /* @__PURE__ */ new Set(["ETF", "ETN", "ADR", "IPO", "USA", "KOSPI", "KOSDAQ", "KRX", "NYSE", "AMEX", "PER", "ROE", "EPS", "PBR", "VI", "AI"]);
           for (const s of texts) {
             if (!s) continue;
             let m = s.match(/\((\d{6})\)/) || s.match(/(?:^|[^0-9])(\d{6})(?:[^0-9]|$)/);
             if (m) return { code: m[1], label: s.split(/[:|(\-]/)[0].trim().slice(0, 20) || m[1] };
+            m = s.match(/(?:NASDAQ|NYSE|AMEX|NAS)\s*[::]\s*([A-Z0-9.]{1,6})\b/i);
+            if (m && !NOT_TICKER.has(m[1].toUpperCase())) return { code: m[1].toUpperCase(), label: m[1].toUpperCase() };
             m = s.match(/\$([A-Z]{1,6})\b/) || s.match(/\b([A-Z]{2,6})\s*\$\s?\d/) || s.match(/^\s*([A-Z]{2,6})\s*[:\-]/);
-            if (m) return { code: m[1], label: m[1] };
+            if (m && !NOT_TICKER.has(m[1])) return { code: m[1], label: m[1] };
+          }
+          for (const s of texts.slice(0, 6)) {
+            const m = s?.match(/\(([A-Z]{1,6})\)/);
+            if (m && !NOT_TICKER.has(m[1])) return { code: m[1], label: s.split(/[:|(\-]/)[0].trim().slice(0, 20) || m[1] };
           }
           return null;
         }

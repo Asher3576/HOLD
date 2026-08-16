@@ -26,7 +26,7 @@ interface Calib {
 }
 
 const w = window as unknown as { __HOLD_CS__?: string | boolean }
-const HOLD_CS_VER = '0.4.1'
+const HOLD_CS_VER = '0.4.2'
 if (w.__HOLD_CS__ !== HOLD_CS_VER) {
   // 확장 업데이트 후 남아있는 이전 버전 오버레이 제거 (우리 UI 는 전부 <html> 직속 + 고유 z-index)
   for (const el of Array.from(document.documentElement.children)) {
@@ -68,14 +68,30 @@ if (w.__HOLD_CS__ !== HOLD_CS_VER) {
   function autoDetectRegion() {
     let best: Rect | null = null
     let bestArea = 0
-    for (const el of Array.from(document.querySelectorAll('canvas, iframe'))) {
-      const r = (el as HTMLElement).getBoundingClientRect()
-      if (r.width < 300 || r.height < 180) continue
-      if (r.bottom < 0 || r.top > window.innerHeight) continue
+    const consider = (r: { left: number; top: number; width: number; height: number; bottom: number }, ox = 0, oy = 0) => {
+      if (r.width < 300 || r.height < 180) return
+      if (r.bottom + oy < 0 || r.top + oy > window.innerHeight) return
       const area = r.width * r.height
       if (area > bestArea) {
         bestArea = area
-        best = { x: r.left, y: r.top, w: r.width, h: r.height }
+        best = { x: r.left + ox, y: r.top + oy, w: r.width, h: r.height }
+      }
+    }
+    for (const el of Array.from(document.querySelectorAll('canvas, iframe'))) {
+      consider((el as HTMLElement).getBoundingClientRect())
+      // 같은 출처 iframe 이면 내부의 실제 차트 캔버스를 더 정밀하게 잡는다
+      if (el.tagName === 'IFRAME') {
+        try {
+          const d = (el as HTMLIFrameElement).contentDocument
+          if (d) {
+            const fr = (el as HTMLElement).getBoundingClientRect()
+            for (const c of Array.from(d.querySelectorAll('canvas'))) {
+              consider(c.getBoundingClientRect(), fr.left, fr.top)
+            }
+          }
+        } catch {
+          /* cross-origin 제외 */
+        }
       }
     }
     if (best) region = best
@@ -371,25 +387,46 @@ if (w.__HOLD_CS__ !== HOLD_CS_VER) {
     }
     const right: Pt[] = []
     const left: Pt[] = []
+    // 눈금 텍스트를 찾을 문서들 — 최상위 + 같은 출처 iframe (차트를 iframe 에 넣는 사이트 대응).
+    // iframe 내부 좌표는 iframe 의 화면 위치만큼 보정한다.
+    const docs: { body: HTMLElement; ox: number; oy: number }[] = []
+    if (document.body) docs.push({ body: document.body, ox: 0, oy: 0 })
     try {
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
-      let node: Node | null
-      let seen = 0
-      while ((node = walker.nextNode()) && seen < 4000) {
-        seen++
-        const s = (node.nodeValue ?? '').trim()
-        if (!/^[\d,]+(?:\.\d+)?$/.test(s)) continue
-        const p = Number(s.replace(/,/g, ''))
-        if (!(p > 0)) continue
-        const el = node.parentElement
-        if (!el) continue
-        const r = el.getBoundingClientRect()
-        if (!r.width || r.height > 36 || r.width > 150) continue
-        const cy = r.top + r.height / 2
-        const cx = r.left + r.width / 2
-        if (cy < R.y - 10 || cy > R.y + R.h + 10) continue
-        if (cx >= R.x + R.w * 0.72 && cx <= R.x + R.w + 90) right.push({ y: cy, p })
-        else if (cx >= R.x - 90 && cx <= R.x + R.w * 0.28) left.push({ y: cy, p })
+      for (const f of Array.from(document.querySelectorAll('iframe')).slice(0, 10)) {
+        try {
+          const d = (f as HTMLIFrameElement).contentDocument
+          if (d?.body) {
+            const fr = f.getBoundingClientRect()
+            docs.push({ body: d.body, ox: fr.left, oy: fr.top })
+          }
+        } catch {
+          /* cross-origin 프레임 제외 */
+        }
+      }
+    } catch {
+      /* 무시 */
+    }
+    try {
+      for (const { body, ox, oy } of docs) {
+        const walker = (body.ownerDocument ?? document).createTreeWalker(body, NodeFilter.SHOW_TEXT)
+        let node: Node | null
+        let seen = 0
+        while ((node = walker.nextNode()) && seen < 4000) {
+          seen++
+          const s = (node.nodeValue ?? '').trim()
+          if (!/^[\d,]+(?:\.\d+)?$/.test(s)) continue
+          const p = Number(s.replace(/,/g, ''))
+          if (!(p > 0)) continue
+          const el = node.parentElement
+          if (!el) continue
+          const r = el.getBoundingClientRect()
+          if (!r.width || r.height > 36 || r.width > 150) continue
+          const cy = r.top + r.height / 2 + oy
+          const cx = r.left + r.width / 2 + ox
+          if (cy < R.y - 10 || cy > R.y + R.h + 10) continue
+          if (cx >= R.x + R.w * 0.72 && cx <= R.x + R.w + 90) right.push({ y: cy, p })
+          else if (cx >= R.x - 90 && cx <= R.x + R.w * 0.28) left.push({ y: cy, p })
+        }
       }
     } catch {
       return false
