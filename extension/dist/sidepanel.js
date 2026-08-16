@@ -956,6 +956,19 @@
   for (const [id, kind] of RR_WIRING) {
     $(id).addEventListener("input", () => rrSync(kind));
   }
+  function bindStep(minusId, plusId, inputId, delta, min, after) {
+    const el = $(inputId);
+    const nudge = (d) => {
+      const v = Math.max(min, Math.round(((Number(el.value) || 0) + d) * 10) / 10);
+      el.value = String(v);
+      after();
+    };
+    $(minusId).addEventListener("click", () => nudge(-delta));
+    $(plusId).addEventListener("click", () => nudge(delta));
+  }
+  bindStep("rrStopMinus", "rrStopPlus", "rrStopPct", 0.5, 0.5, () => rrSync("stopPct"));
+  bindStep("rrTargetMinus", "rrTargetPlus", "rrTargetPct", 0.5, 0.5, () => rrSync("targetPct"));
+  bindStep("tQtyMinus", "tQtyPlus", "tQty", 1, 1, renderTrade);
   $("authLogin").addEventListener("click", () => {
     void (async () => {
       const email = $("authEmail").value.trim();

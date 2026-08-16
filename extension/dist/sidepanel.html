@@ -43,6 +43,26 @@
       .dim { color: #7a8296; }
       .faint { color: #5a6170; font-size: 10.5px; }
       a { color: #57c7a4; text-decoration: none; }
+      /* 브라우저 기본 숫자 스피너 제거 — 테마에 안 맞음 */
+      input[type='number']::-webkit-outer-spin-button,
+      input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+      input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
+      /* 커스텀 스테퍼 (− 값 +) */
+      .step {
+        display: flex; align-items: center; overflow: hidden;
+        background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px;
+      }
+      .stepBtn {
+        flex: 0 0 27px; height: 35px; font-size: 15px; font-weight: 700; color: #99a1b3;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .stepBtn:hover { color: #f2f4f8; background: rgba(255,255,255,0.07); }
+      .stepBtn:active { background: rgba(255,255,255,0.12); }
+      .stepIn {
+        flex: 1; width: 100%; min-width: 0; background: transparent; border: none; outline: none;
+        color: #f2f4f8; text-align: center; font-size: 12.5px; padding: 0;
+        font-variant-numeric: tabular-nums;
+      }
     </style>
   </head>
   <body>
@@ -117,13 +137,21 @@
       <div class="row" style="margin-top:7px">
         <span class="dim" style="flex:0 0 42px;font-size:11.5px">손절</span>
         <input id="rrStop" class="in" type="number" placeholder="가격" />
-        <input id="rrStopPct" class="in" type="number" step="0.5" placeholder="%" style="flex:0 0 64px;text-align:right" />
+        <div class="step" style="flex:0 0 104px">
+          <button id="rrStopMinus" class="stepBtn">−</button>
+          <input id="rrStopPct" class="stepIn" type="number" placeholder="%" />
+          <button id="rrStopPlus" class="stepBtn">+</button>
+        </div>
         <span class="dim" style="flex:0 0 20px;font-size:11.5px">%↓</span>
       </div>
       <div class="row" style="margin-top:7px">
         <span class="dim" style="flex:0 0 42px;font-size:11.5px">목표</span>
         <input id="rrTarget" class="in" type="number" placeholder="가격" />
-        <input id="rrTargetPct" class="in" type="number" step="0.5" placeholder="%" style="flex:0 0 64px;text-align:right" />
+        <div class="step" style="flex:0 0 104px">
+          <button id="rrTargetMinus" class="stepBtn">−</button>
+          <input id="rrTargetPct" class="stepIn" type="number" placeholder="%" />
+          <button id="rrTargetPlus" class="stepBtn">+</button>
+        </div>
         <span class="dim" style="flex:0 0 20px;font-size:11.5px">%↑</span>
       </div>
       <div id="rrOut" class="mono" style="margin-top:10px;font-size:18px;font-weight:700">손익비 —</div>
@@ -158,7 +186,11 @@
         </div>
         <div id="tradeBox" style="display:none">
           <div class="row" style="margin-top:9px">
-            <input id="tQty" class="in" type="number" min="1" value="10" style="flex:0 0 76px;text-align:right" />
+            <div class="step" style="flex:0 0 104px">
+              <button id="tQtyMinus" class="stepBtn">−</button>
+              <input id="tQty" class="stepIn" type="number" min="1" value="10" />
+              <button id="tQtyPlus" class="stepBtn">+</button>
+            </div>
             <span class="dim" style="flex:0 0 16px;font-size:11.5px">주</span>
             <span style="flex:1"></span>
             <span id="tCost" class="faint"></span>
