@@ -303,6 +303,104 @@
     out.style.color = rr < 1 ? "#FF6B77" : "#F2F4F8";
     note.textContent = rr < 1 ? `\uC783\uC744 \uD3ED(${risk.toFixed(1)}%)\uC774 \uBC8C \uD3ED(${reward.toFixed(1)}%)\uBCF4\uB2E4 \uCEE4\uC694` : `\uBC8C \uD3ED +${reward.toFixed(1)}% vs \uC783\uC744 \uD3ED \u2212${risk.toFixed(1)}%`;
   }
+  async function tvNativeDraw(lines) {
+    if (tabId == null) return 0;
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId, allFrames: true },
+        world: "MAIN",
+        func: (lines2) => {
+          const win = window;
+          const findWidget = () => {
+            try {
+              for (const k of Object.keys(win)) {
+                const v = win[k];
+                if (v && typeof v.activeChart === "function" && typeof v.onChartReady === "function") {
+                  return v;
+                }
+              }
+            } catch {
+            }
+            return null;
+          };
+          const wg = findWidget();
+          if (!wg) return 0;
+          try {
+            const chart = wg.activeChart();
+            const ids = [];
+            let n = 0;
+            for (const l of lines2) {
+              try {
+                const id = chart.createShape(
+                  { time: Math.floor(Date.now() / 1e3), price: l.price },
+                  {
+                    shape: "horizontal_line",
+                    disableSave: true,
+                    text: l.title,
+                    overrides: {
+                      linecolor: l.color,
+                      linewidth: 2,
+                      linestyle: l.dashed ? 2 : 0,
+                      showLabel: true,
+                      text: l.title,
+                      textcolor: l.color,
+                      horzLabelsAlign: "right",
+                      fontsize: 11
+                    }
+                  }
+                );
+                if (id != null) {
+                  ids.push(id);
+                  n++;
+                }
+              } catch {
+              }
+            }
+            win.__HOLD_TV_IDS = (win.__HOLD_TV_IDS ?? []).concat(ids);
+            return n;
+          } catch {
+            return 0;
+          }
+        },
+        args: [lines]
+      });
+      return results.reduce((sum, r) => sum + (Number(r?.result) || 0), 0);
+    } catch {
+      return 0;
+    }
+  }
+  async function tvNativeClear() {
+    if (tabId == null) return;
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId, allFrames: true },
+        world: "MAIN",
+        func: () => {
+          const win = window;
+          const ids = win.__HOLD_TV_IDS ?? [];
+          if (!ids.length) return;
+          try {
+            for (const k of Object.keys(win)) {
+              const v = win[k];
+              if (v && typeof v.activeChart === "function") {
+                const chart = v.activeChart();
+                for (const id of ids) {
+                  try {
+                    chart.removeEntity(id);
+                  } catch {
+                  }
+                }
+                break;
+              }
+            }
+          } catch {
+          }
+          win.__HOLD_TV_IDS = [];
+        }
+      });
+    } catch {
+    }
+  }
   async function ensureContent() {
     if (tabId == null) return false;
     try {
@@ -373,34 +471,60 @@
   });
   $("drawLevels").addEventListener("click", () => {
     if (!quote || !levels.length) return;
-    void send({
-      type: "HOLD_DRAW_LEVELS",
-      currentPrice: quote.price,
-      levels: levels.map((l) => ({
-        price: Math.round(l.price * 100) / 100,
-        kind: l.kind,
-        label: `${l.kind === "support" ? "\uC9C0\uC9C0" : "\uC800\uD56D"} ${fmt(l.price, quote.currency)} \xB7 ${l.touches}\uBC88 \uD130\uCE58`
-      }))
-    });
+    void (async () => {
+      const native = await tvNativeDraw(
+        levels.map((l) => ({
+          price: Math.round(l.price * 100) / 100,
+          title: `${l.kind === "support" ? "\uC9C0\uC9C0" : "\uC800\uD56D"} ${fmt(l.price, quote.currency)} \xB7 ${l.touches}\uBC88 \uD130\uCE58`,
+          color: l.kind === "support" ? "#57C7A4" : "#FF6B77",
+          dashed: true
+        }))
+      );
+      if (native > 0) {
+        $("levelHint").textContent = "\uCC28\uD2B8 \uC790\uCCB4\uC5D0 \uADF8\uB838\uC5B4\uC694 \u2014 \uC90C/\uC2A4\uD06C\uB864\uC744 \uB530\uB77C\uAC00\uC694 \xB7 [\uC9C0\uC6B0\uAE30]\uB85C \uC81C\uAC70";
+        return;
+      }
+      $("levelHint").textContent = "\uCC98\uC74C \uD55C \uBC88, \uD654\uBA74\uC758 \uAC00\uACA9 \uC704\uCE58 2\uACF3\uC744 \uD074\uB9AD\uD574 \uBCF4\uC815\uD574\uC694";
+      void send({
+        type: "HOLD_DRAW_LEVELS",
+        currentPrice: quote.price,
+        levels: levels.map((l) => ({
+          price: Math.round(l.price * 100) / 100,
+          kind: l.kind,
+          label: `${l.kind === "support" ? "\uC9C0\uC9C0" : "\uC800\uD56D"} ${fmt(l.price, quote.currency)} \xB7 ${l.touches}\uBC88 \uD130\uCE58`
+        }))
+      });
+    })();
   });
   $("rrDraw").addEventListener("click", () => {
     const e = Number($("rrEntry").value);
     const s = Number($("rrStop").value);
     const t = Number($("rrTarget").value);
     if (!(e > 0 && s > 0 && t > 0) || !quote) return;
-    void send({
-      type: "HOLD_DRAW_LEVELS",
-      currentPrice: quote.price,
-      levels: [
-        { price: e, kind: "entry", label: `\uC9C4\uC785 ${fmt(e, quote.currency)}` },
-        { price: s, kind: "stop", label: `\uC190\uC808 ${fmt(s, quote.currency)}` },
-        { price: t, kind: "target", label: `\uBAA9\uD45C ${fmt(t, quote.currency)}` }
-      ]
-    });
+    void (async () => {
+      const native = await tvNativeDraw([
+        { price: e, title: `\uC9C4\uC785 ${fmt(e, quote.currency)}`, color: "#F2F4F8", dashed: false },
+        { price: s, title: `\uC190\uC808 ${fmt(s, quote.currency)}`, color: "#FF6B77", dashed: true },
+        { price: t, title: `\uBAA9\uD45C ${fmt(t, quote.currency)}`, color: "#57C7A4", dashed: true }
+      ]);
+      if (native > 0) return;
+      void send({
+        type: "HOLD_DRAW_LEVELS",
+        currentPrice: quote.price,
+        levels: [
+          { price: e, kind: "entry", label: `\uC9C4\uC785 ${fmt(e, quote.currency)}` },
+          { price: s, kind: "stop", label: `\uC190\uC808 ${fmt(s, quote.currency)}` },
+          { price: t, kind: "target", label: `\uBAA9\uD45C ${fmt(t, quote.currency)}` }
+        ]
+      });
+    })();
   });
   $("modeH").addEventListener("click", () => void send({ type: "HOLD_SET_MODE", mode: "hline" }));
   $("modeT").addEventListener("click", () => void send({ type: "HOLD_SET_MODE", mode: "trend" }));
-  $("clearAll").addEventListener("click", () => void send({ type: "HOLD_CLEAR" }));
+  $("clearAll").addEventListener("click", () => {
+    void tvNativeClear();
+    void send({ type: "HOLD_CLEAR" });
+  });
   for (const id of ["rrEntry", "rrStop", "rrTarget"]) {
     $(id).addEventListener("input", calcRR);
   }

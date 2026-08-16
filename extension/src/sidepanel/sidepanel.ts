@@ -368,6 +368,125 @@ function calcRR() {
       : `벌 폭 +${reward.toFixed(1)}% vs 잃을 폭 −${risk.toFixed(1)}%`
 }
 
+// ─── 네이티브 작도 (토스/트레이딩뷰 차트 내부 위젯 — 비공식, 실패 시 오버레이 폴백) ──
+interface NativeLine {
+  price: number
+  title: string
+  color: string
+  dashed: boolean
+}
+
+/** 페이지 MAIN 월드에서 TradingView 위젯을 찾아 진짜 수평선 작도를 생성 */
+async function tvNativeDraw(lines: NativeLine[]): Promise<number> {
+  if (tabId == null) return 0
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      world: 'MAIN',
+      func: (lines: NativeLine[]) => {
+        const win = window as unknown as Record<string, unknown> & {
+          __HOLD_TV_IDS?: unknown[]
+        }
+        const findWidget = (): { activeChart: () => unknown } | null => {
+          try {
+            for (const k of Object.keys(win)) {
+              const v = win[k] as { activeChart?: unknown; onChartReady?: unknown } | null
+              if (v && typeof v.activeChart === 'function' && typeof v.onChartReady === 'function') {
+                return v as { activeChart: () => unknown }
+              }
+            }
+          } catch {
+            /* cross-origin 등 무시 */
+          }
+          return null
+        }
+        const wg = findWidget()
+        if (!wg) return 0
+        try {
+          const chart = wg.activeChart() as {
+            createShape: (point: unknown, opts: unknown) => unknown
+          }
+          const ids: unknown[] = []
+          let n = 0
+          for (const l of lines) {
+            try {
+              const id = chart.createShape(
+                { time: Math.floor(Date.now() / 1000), price: l.price },
+                {
+                  shape: 'horizontal_line',
+                  disableSave: true,
+                  text: l.title,
+                  overrides: {
+                    linecolor: l.color,
+                    linewidth: 2,
+                    linestyle: l.dashed ? 2 : 0,
+                    showLabel: true,
+                    text: l.title,
+                    textcolor: l.color,
+                    horzLabelsAlign: 'right',
+                    fontsize: 11,
+                  },
+                },
+              )
+              if (id != null) {
+                ids.push(id)
+                n++
+              }
+            } catch {
+              /* 개별 선 실패 무시 */
+            }
+          }
+          win.__HOLD_TV_IDS = (win.__HOLD_TV_IDS ?? []).concat(ids)
+          return n
+        } catch {
+          return 0
+        }
+      },
+      args: [lines],
+    })
+    return results.reduce((sum, r) => sum + (Number(r?.result) || 0), 0)
+  } catch {
+    return 0
+  }
+}
+
+/** 네이티브로 그린 선 제거 */
+async function tvNativeClear(): Promise<void> {
+  if (tabId == null) return
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      world: 'MAIN',
+      func: () => {
+        const win = window as unknown as Record<string, unknown> & { __HOLD_TV_IDS?: unknown[] }
+        const ids = win.__HOLD_TV_IDS ?? []
+        if (!ids.length) return
+        try {
+          for (const k of Object.keys(win)) {
+            const v = win[k] as { activeChart?: () => { removeEntity: (id: unknown) => void } } | null
+            if (v && typeof v.activeChart === 'function') {
+              const chart = v.activeChart()
+              for (const id of ids) {
+                try {
+                  chart.removeEntity(id)
+                } catch {
+                  /* 이미 지워진 선 무시 */
+                }
+              }
+              break
+            }
+          }
+        } catch {
+          /* 무시 */
+        }
+        win.__HOLD_TV_IDS = []
+      },
+    })
+  } catch {
+    /* 무시 */
+  }
+}
+
 // ─── 콘텐츠 스크립트 통신 ─────────────────────────────────────────────────
 async function ensureContent(): Promise<boolean> {
   if (tabId == null) return false
@@ -449,15 +568,32 @@ $<HTMLInputElement>('symInput').addEventListener('keydown', (e) => {
 
 $('drawLevels').addEventListener('click', () => {
   if (!quote || !levels.length) return
-  void send({
-    type: 'HOLD_DRAW_LEVELS',
-    currentPrice: quote.price,
-    levels: levels.map((l) => ({
-      price: Math.round(l.price * 100) / 100,
-      kind: l.kind,
-      label: `${l.kind === 'support' ? '지지' : '저항'} ${fmt(l.price, quote!.currency)} · ${l.touches}번 터치`,
-    })),
-  })
+  void (async () => {
+    // 1순위: 페이지 안 TradingView 차트에 진짜 작도 (토스증권 등 — 줌/스크롤 추종)
+    const native = await tvNativeDraw(
+      levels.map((l) => ({
+        price: Math.round(l.price * 100) / 100,
+        title: `${l.kind === 'support' ? '지지' : '저항'} ${fmt(l.price, quote!.currency)} · ${l.touches}번 터치`,
+        color: l.kind === 'support' ? '#57C7A4' : '#FF6B77',
+        dashed: true,
+      })),
+    )
+    if (native > 0) {
+      $('levelHint').textContent = '차트 자체에 그렸어요 — 줌/스크롤을 따라가요 · [지우기]로 제거'
+      return
+    }
+    // 폴백: 화면 오버레이 (2점 보정)
+    $('levelHint').textContent = '처음 한 번, 화면의 가격 위치 2곳을 클릭해 보정해요'
+    void send({
+      type: 'HOLD_DRAW_LEVELS',
+      currentPrice: quote!.price,
+      levels: levels.map((l) => ({
+        price: Math.round(l.price * 100) / 100,
+        kind: l.kind,
+        label: `${l.kind === 'support' ? '지지' : '저항'} ${fmt(l.price, quote!.currency)} · ${l.touches}번 터치`,
+      })),
+    })
+  })()
 })
 
 $('rrDraw').addEventListener('click', () => {
@@ -465,20 +601,31 @@ $('rrDraw').addEventListener('click', () => {
   const s = Number($<HTMLInputElement>('rrStop').value)
   const t = Number($<HTMLInputElement>('rrTarget').value)
   if (!(e > 0 && s > 0 && t > 0) || !quote) return
-  void send({
-    type: 'HOLD_DRAW_LEVELS',
-    currentPrice: quote.price,
-    levels: [
-      { price: e, kind: 'entry', label: `진입 ${fmt(e, quote.currency)}` },
-      { price: s, kind: 'stop', label: `손절 ${fmt(s, quote.currency)}` },
-      { price: t, kind: 'target', label: `목표 ${fmt(t, quote.currency)}` },
-    ],
-  })
+  void (async () => {
+    const native = await tvNativeDraw([
+      { price: e, title: `진입 ${fmt(e, quote!.currency)}`, color: '#F2F4F8', dashed: false },
+      { price: s, title: `손절 ${fmt(s, quote!.currency)}`, color: '#FF6B77', dashed: true },
+      { price: t, title: `목표 ${fmt(t, quote!.currency)}`, color: '#57C7A4', dashed: true },
+    ])
+    if (native > 0) return
+    void send({
+      type: 'HOLD_DRAW_LEVELS',
+      currentPrice: quote!.price,
+      levels: [
+        { price: e, kind: 'entry', label: `진입 ${fmt(e, quote!.currency)}` },
+        { price: s, kind: 'stop', label: `손절 ${fmt(s, quote!.currency)}` },
+        { price: t, kind: 'target', label: `목표 ${fmt(t, quote!.currency)}` },
+      ],
+    })
+  })()
 })
 
 $('modeH').addEventListener('click', () => void send({ type: 'HOLD_SET_MODE', mode: 'hline' }))
 $('modeT').addEventListener('click', () => void send({ type: 'HOLD_SET_MODE', mode: 'trend' }))
-$('clearAll').addEventListener('click', () => void send({ type: 'HOLD_CLEAR' }))
+$('clearAll').addEventListener('click', () => {
+  void tvNativeClear() // 차트 자체에 그린 선
+  void send({ type: 'HOLD_CLEAR' }) // 오버레이에 그린 선
+})
 for (const id of ['rrEntry', 'rrStop', 'rrTarget']) {
   $<HTMLInputElement>(id).addEventListener('input', calcRR)
 }

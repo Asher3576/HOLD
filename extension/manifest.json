@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "HOLD — 인사이트 프렌즈",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "보고 있는 차트 위에 계획을 — 실시세·지지/저항·손익비·작도. 지시 없음, 실거래 없음.",
   "action": {
     "default_title": "HOLD 열기"
