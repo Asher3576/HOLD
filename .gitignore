@@ -10,6 +10,7 @@ coverage/
 supabase/.temp/
 supabase/.branches/
 
-# 시크릿 키는 절대 커밋 금지 (.env는 퍼블리셔블 키만 담으므로 커밋함)
-.env.secret
-.env.*.secret
+# 환경 변수는 커밋하지 않는다 — web/.env.example 참고
+.env
+.env.*
+!.env.example
