@@ -122,14 +122,13 @@ supabase/
 git clone <this-repo>
 cd HOLD
 pnpm install
-cp web/.env.example web/.env   # Supabase 프로젝트 URL과 publishable 키를 채운다
-pnpm dev                       # 웹앱 — http://localhost:5173
+pnpm dev        # 웹앱 — http://localhost:5173
 ```
 
-환경 변수와 시크릿은 커밋하지 않는다.
-
-- `web/.env` — Supabase URL + publishable 키. 값은 Supabase 대시보드 → Settings → API.
-  배포 환경(Vercel 등)에는 같은 두 값을 환경 변수로 넣는다.
+- `web/.env`에는 Supabase 프로젝트 URL과 publishable 키가 들어 있다.
+  publishable 키는 브라우저에 노출되도록 설계된 공개 키라 커밋해도 안전하고,
+  배포(Vercel)도 이 파일로 빌드한다. 자기 프로젝트로 포크하면 이 두 값만 바꾸면 된다
+  (`web/.env.example` 참고, 값은 Supabase 대시보드 → Settings → API).
 - Supabase Edge Functions Secrets — `KIS_APP_KEY`, `KIS_APP_SECRET`(한국투자증권
   KIS Developers 앱키), `GEMINI_API_KEY`(선택, AI 브리핑/복기용).
   이 값들은 서버에만 있고 리포와 클라이언트에는 절대 넣지 않는다.
