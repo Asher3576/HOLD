@@ -10,7 +10,9 @@
 
 ## 크롬 플러그인 설치 (2분)
 
-HOLD의 절반은 크롬 플러그인이다. 토스증권·네이버 증권·트레이딩뷰 같은 화면 옆에
+![토스증권 화면 옆에 붙은 HOLD 크롬 플러그인 — 종목 자동 인식, 지지/저항, 손익비](docs/screenshots/plugin-toss.webp)
+
+HOLD의 절반은 크롬 플러그인이다. 위 화면처럼 토스증권·네이버 증권·트레이딩뷰 옆에
 사이드 패널로 붙어서 종목 인식, 실시세, 지지/저항, 손익비 점검, 모의 매수까지
 그 자리에서 해결한다.
 
@@ -79,6 +81,15 @@ HOLD는 실거래를 지원하지 않는다. 주문 API도, 사용자의 증권�
 매수/매도는 전부 모의(시드 현금 1,000만)로 돌아간다.
 
 ### 앱
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/app-home.png" width="200" alt="메인 — 부엉이 브리핑, 금고, 알 선반" /><br /><sub>메인 — 금고와 알 선반</sub></td>
+    <td align="center"><img src="docs/screenshots/app-new-egg.png" width="200" alt="새 알 품기 — 손절/익절/기간/수량과 매수 이유" /><br /><sub>새 알 품기 — 계획이 곧 알</sub></td>
+    <td align="center"><img src="docs/screenshots/app-egg-detail.png" width="200" alt="알 상세 — 익절선 근처 블러" /><br /><sub>알 상세 — 익절선 근처 블러</sub></td>
+    <td align="center"><img src="docs/screenshots/app-sell-intervention.png" width="200" alt="매도 개입 — 과거 매도 기록과 반례" /><br /><sub>매도 개입 — 과거 기록으로 비추기</sub></td>
+  </tr>
+</table>
 
 | 기능 | 설명 |
 |---|---|
