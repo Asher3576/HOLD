@@ -189,6 +189,7 @@ export default function App() {
               onToggleNews={a.toggleNews}
               real={isReal}
               eggCount={s.eggs.length}
+              brief={s.brief}
             />
 
             {/* 핵심: 내 계획(알)들 — 금고보다 위 */}

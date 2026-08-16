@@ -1,5 +1,6 @@
 import Mascot, { type CharName } from './insight/Mascot'
 import { newsItems } from '../mock/design'
+import type { Brief } from '../lib/api'
 
 export interface HeroSpec {
   name: CharName
@@ -19,6 +20,7 @@ export default function HoldieZone({
   onToggleNews,
   real = false,
   eggCount = 0,
+  brief = null,
 }: {
   hero: HeroSpec
   tired: boolean
@@ -26,15 +28,20 @@ export default function HoldieZone({
   onToggleNews: () => void
   real?: boolean
   eggCount?: number
+  /** real 모드 AI 브리핑 — 있으면 요약을 말하고 실제 헤드라인을 펼친다 */
+  brief?: Brief | null
 }) {
   const bubbleText = real
-    ? eggCount === 0
-      ? '선반이 비어 있어 — 아래에서 첫 알(계획)을 품어봐.'
-      : `지금 알 ${eggCount}개 품는 중 — 수익률 대신, 계획대로 가는지만 봐.`
+    ? (brief?.summary ??
+      (eggCount === 0
+        ? '선반이 비어 있어 — 아래에서 첫 알(계획)을 품어봐.'
+        : `지금 알 ${eggCount}개 품는 중 — 수익률 대신, 계획대로 가는지만 봐.`))
     : tired
       ? '"새로운 건 없었어. 나만 피곤해졌어"'
       : "오늘 뉴스 14개 읽었어. 1개는 확인해봐 — 네 'HBM 수요' 근거를 건드릴 수도 있어."
-  const expandable = !real
+  const realItems = real ? (brief?.items ?? []) : null
+  const expandable = real ? (realItems?.length ?? 0) > 0 : true
+  const listItems = realItems ?? newsItems
   return (
     <div style={{ marginTop: 14 }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
@@ -66,7 +73,7 @@ export default function HoldieZone({
             </span>
             {expandable && (
               <span style={{ display: 'block', marginTop: 7, fontSize: 10, color: '#6B7280' }}>
-                {newsOpen ? '탭해서 접기' : '탭해서 뉴스 14건 보기 (데모)'}
+                {newsOpen ? '탭해서 접기' : `탭해서 뉴스 ${listItems.length}건 보기${real ? '' : ' (데모)'}`}
               </span>
             )}
           </button>
@@ -98,37 +105,52 @@ export default function HoldieZone({
             WebkitBackdropFilter: 'blur(16px)',
           }}
         >
-          {newsItems.map((n, i) => (
-            <div
-              key={i}
-              style={{
-                display: 'flex',
-                gap: 9,
-                alignItems: 'flex-start',
-                padding: '11px 0',
-                borderTop: i > 0 ? '1px solid rgba(255,255,255,0.07)' : undefined,
-                opacity: n.rel ? 1 : 0.42,
-              }}
-            >
-              <span
-                style={{
-                  flex: 'none',
-                  fontSize: 9.5,
-                  fontWeight: 700,
-                  padding: '3px 7px',
-                  borderRadius: 999,
-                  marginTop: 1,
-                  background: n.rel ? 'rgba(87,199,164,0.15)' : 'rgba(255,255,255,0.08)',
-                  color: n.rel ? '#57C7A4' : '#99A1B3',
-                }}
-              >
-                {n.tag}
-              </span>
-              <span style={{ flex: 1, fontSize: 12, lineHeight: 1.5, color: '#D6DAE3' }}>
-                {n.headline}
-              </span>
-            </div>
-          ))}
+          {listItems.map((n, i) => {
+            const link = (n as { link?: string }).link
+            const inner = (
+              <>
+                <span
+                  style={{
+                    flex: 'none',
+                    fontSize: 9.5,
+                    fontWeight: 700,
+                    padding: '3px 7px',
+                    borderRadius: 999,
+                    marginTop: 1,
+                    background: n.rel ? 'rgba(87,199,164,0.15)' : 'rgba(255,255,255,0.08)',
+                    color: n.rel ? '#57C7A4' : '#99A1B3',
+                    maxWidth: 84,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {n.tag}
+                </span>
+                <span style={{ flex: 1, fontSize: 12, lineHeight: 1.5, color: '#D6DAE3' }}>
+                  {n.headline}
+                </span>
+              </>
+            )
+            const rowStyle: React.CSSProperties = {
+              display: 'flex',
+              gap: 9,
+              alignItems: 'flex-start',
+              padding: '11px 0',
+              borderTop: i > 0 ? '1px solid rgba(255,255,255,0.07)' : undefined,
+              opacity: n.rel ? 1 : 0.42,
+              textDecoration: 'none',
+            }
+            return link ? (
+              <a key={i} href={link} target="_blank" rel="noreferrer" style={rowStyle}>
+                {inner}
+              </a>
+            ) : (
+              <div key={i} style={rowStyle}>
+                {inner}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

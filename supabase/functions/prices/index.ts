@@ -6,10 +6,12 @@
 //   KIS_APP_KEY, KIS_APP_SECRET  (한국투자증권 KIS Developers 실전투자 앱키)
 // 미설정 시 kis-not-configured 반환 → 웹앱은 목데이터로 자동 폴백.
 //
-// 라우트(기존과 동일 — 웹앱 무변경):
+// 라우트:
 //   GET /prices/health
 //   GET /prices/quotes?symbols=005930,TSLA
 //   GET /prices/klines?symbol=005930&limit=60
+//   GET /prices/news?q=삼성전자 주가
+//   GET /prices/brief?labels=삼성전자,테슬라   ← Gemini 요약 (GEMINI_API_KEY 시크릿, 없으면 헤드라인만)
 
 const APP_KEY = Deno.env.get('KIS_APP_KEY') ?? Deno.env.get('KIS_API_KEY') ?? ''
 const APP_SECRET = Deno.env.get('KIS_APP_SECRET') ?? Deno.env.get('KIS_API_SECRET') ?? ''
@@ -69,6 +71,40 @@ async function dbSaveToken(v: { token: string; expiresAt: number }): Promise<voi
     })
   } catch {
     /* 저장 실패해도 동작엔 지장 없음 */
+  }
+}
+
+// ─── 앱 캐시 (범용 — app_cache 테이블, service role 전용) ───────────────────
+async function cacheGet(key: string): Promise<unknown | null> {
+  if (!SB_URL || !SB_SVC) return null
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/app_cache?key=eq.${encodeURIComponent(key)}&select=value`, {
+      headers: { apikey: SB_SVC, Authorization: `Bearer ${SB_SVC}` },
+      signal: AbortSignal.timeout(5_000),
+    })
+    const rows = await res.json().catch(() => null)
+    return rows?.[0]?.value ?? null
+  } catch {
+    return null
+  }
+}
+
+async function cacheSet(key: string, value: unknown): Promise<void> {
+  if (!SB_URL || !SB_SVC) return
+  try {
+    await fetch(`${SB_URL}/rest/v1/app_cache`, {
+      method: 'POST',
+      headers: {
+        apikey: SB_SVC,
+        Authorization: `Bearer ${SB_SVC}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify({ key, value, updated_at: new Date().toISOString() }),
+      signal: AbortSignal.timeout(5_000),
+    })
+  } catch {
+    /* 캐시 실패는 무시 */
   }
 }
 
@@ -236,6 +272,96 @@ async function dailyCloses(sym: string, limit: number) {
   return { candles: candles.slice(-limit), ...(name ? { name } : {}) }
 }
 
+// ─── 뉴스 (Google News RSS — 공개 피드, 키 불필요) ──────────────────────────
+interface NewsItem {
+  title: string
+  link: string
+  pub: string
+  source: string
+}
+
+async function fetchNewsItems(q: string, limit = 6): Promise<NewsItem[]> {
+  try {
+    const rss = await fetch(
+      'https://news.google.com/rss/search?q=' + encodeURIComponent(q) + '&hl=ko&gl=KR&ceid=KR:ko',
+      { signal: AbortSignal.timeout(10_000) },
+    ).then((r) => r.text())
+    const items: NewsItem[] = []
+    const re = /<item>([\s\S]*?)<\/item>/g
+    let m: RegExpExecArray | null
+    while ((m = re.exec(rss)) && items.length < limit) {
+      const block = m[1]
+      const pick = (tag: string) => {
+        const mm = block.match(new RegExp(`<${tag}>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?</${tag}>`))
+        return (mm?.[1] ?? '').trim()
+      }
+      const title = pick('title')
+      const link = pick('link')
+      if (title && link) items.push({ title, link, pub: pick('pubDate'), source: pick('source') })
+    }
+    return items
+  } catch {
+    return []
+  }
+}
+
+// ─── AI 브리핑 (Gemini — 요약·관련성 태깅만, 지시어 금지) ────────────────────
+const GEMINI_KEY = Deno.env.get('GEMINI_API_KEY') ?? ''
+
+/** 매수/매도 지시·추천 표현 — AI 출력에서 걸러낸다 (제품 불변식) */
+const DIRECTIVE =
+  /(사세요|파세요|사라[!.\s]|팔아라|팔아요|매수\s*하|매도\s*하|매수\s*추천|매도\s*추천|추천주|추천합니다|추천해요|올인|풀매수|풀매도|손절하세요|익절하세요|지금\s*(사|팔)|무조건)/
+
+interface BriefHead {
+  tag: string
+  title: string
+  link: string
+}
+
+interface BriefOut {
+  summary: string | null
+  items: Array<{ tag: string; headline: string; link: string; rel: boolean }>
+}
+
+async function geminiBrief(labels: string[], heads: BriefHead[]): Promise<BriefOut | null> {
+  const prompt =
+    '너는 투자 기록 앱의 뉴스 브리핑 도우미야. 규칙을 반드시 지켜:\n' +
+    '- 사실만 요약한다. 매수/매도/추천/전망·예측 표현은 절대 쓰지 않는다.\n' +
+    '- 짧은 반말("~했어", "~일 수 있어")로 쓴다. 이모지 금지.\n\n' +
+    `사용자 보유 종목: ${labels.join(', ') || '(없음)'}\n` +
+    '오늘 헤드라인 (index: [태그] 제목):\n' +
+    heads.map((h, i) => `${i}: [${h.tag}] ${h.title}`).join('\n') +
+    '\n\nJSON 으로만 답해:\n' +
+    '{"summary": "헤드라인 흐름을 사실 위주로 한 문장 (최대 90자)", "relevant": [보유 종목의 투자 근거에 영향을 줄 수 있는 헤드라인 index, 최대 3개]}'
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
+        }),
+        signal: AbortSignal.timeout(20_000),
+      },
+    )
+    const data = await res.json().catch(() => null)
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!text) return null
+    const parsed = JSON.parse(text) as { summary?: unknown; relevant?: unknown }
+    let summary = typeof parsed.summary === 'string' ? parsed.summary.trim().slice(0, 120) : null
+    if (summary && DIRECTIVE.test(summary)) summary = null // 지시어 감지 → 폐기, 결정적 문구로 폴백
+    const relevant = new Set(Array.isArray(parsed.relevant) ? parsed.relevant.map(Number) : [])
+    return {
+      summary,
+      items: heads.map((h, i) => ({ tag: h.tag, headline: h.title, link: h.link, rel: relevant.has(i) })),
+    }
+  } catch {
+    return null
+  }
+}
+
 // ─── 라우트 ─────────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS })
@@ -262,29 +388,57 @@ Deno.serve(async (req) => {
     }
 
     if (path.endsWith('/news')) {
-      // 종목 뉴스 — Google News RSS (키 불필요, 서버 파싱). 제목·링크·시각만 전달.
+      // 종목 뉴스 — 제목·링크·시각만 전달.
       const q = (url.searchParams.get('q') ?? '').slice(0, 60)
       if (!q) return json({ items: [] })
-      const rss = await fetch(
-        'https://news.google.com/rss/search?q=' + encodeURIComponent(q) + '&hl=ko&gl=KR&ceid=KR:ko',
-        { signal: AbortSignal.timeout(10_000) },
-      ).then((r) => r.text())
-      const items: Array<{ title: string; link: string; pub: string; source: string }> = []
-      const re = /<item>([\s\S]*?)<\/item>/g
-      let m: RegExpExecArray | null
-      while ((m = re.exec(rss)) && items.length < 6) {
-        const block = m[1]
-        const pick = (tag: string) => {
-          const mm = block.match(new RegExp(`<${tag}>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?</${tag}>`))
-          return (mm?.[1] ?? '').trim()
-        }
-        const title = pick('title')
-        const link = pick('link')
-        if (title && link) {
-          items.push({ title, link, pub: pick('pubDate'), source: pick('source') })
-        }
+      return json({ items: await fetchNewsItems(q, 6) }, 200, 300)
+    }
+
+    if (path.endsWith('/brief')) {
+      // AI 뉴스 브리핑 — 보유 종목 헤드라인 수집 → Gemini 요약(선택) → 30분 캐시.
+      // GEMINI_API_KEY 미설정이면 헤드라인 + 결정적 문구만 반환 (앱은 그대로 동작).
+      const labels = (url.searchParams.get('labels') ?? '')
+        .split(',')
+        .map((s) => s.trim().slice(0, 20))
+        .filter(Boolean)
+        .slice(0, 3)
+      const ck = 'brief:' + (labels.join('|') || 'general')
+      const hit = (await cacheGet(ck)) as { at: number; data: BriefOut } | null
+      if (hit && typeof hit.at === 'number' && Date.now() - hit.at < 30 * 60_000 && hit.data) {
+        return json({ ...hit.data, cached: true }, 200, 300)
       }
-      return json({ items }, 200, 300)
+      const queries = [
+        ...labels.map((l) => ({ tag: l, q: `${l} 주가` })),
+        { tag: '시장', q: '코스피 증시' },
+      ]
+      const fetched = await Promise.all(queries.map(async (x) => (await fetchNewsItems(x.q, 5)).map((it) => ({ tag: x.tag, title: it.title, link: it.link }))))
+      const seen = new Set<string>()
+      const heads: BriefHead[] = fetched
+        .flat()
+        .filter((h) => {
+          const k = h.title.slice(0, 40)
+          if (seen.has(k)) return false
+          seen.add(k)
+          return true
+        })
+        .slice(0, 14)
+      let out: BriefOut = {
+        summary: null,
+        items: heads.map((h) => ({ tag: h.tag, headline: h.title, link: h.link, rel: false })),
+      }
+      if (GEMINI_KEY && heads.length) {
+        const g = await geminiBrief(labels, heads)
+        if (g) out = g
+      }
+      if (!out.summary && heads.length) {
+        // AI 없거나 실패 — 결정적 사실 문구
+        const relN = out.items.filter((i) => i.rel).length
+        out.summary = relN
+          ? `오늘 관련 뉴스 ${heads.length}건 확인했어 — ${relN}건은 네 계획 근거와 연결될 수 있어.`
+          : `오늘 관련 뉴스 ${heads.length}건 확인했어 — 판단은 네 계획 기준으로.`
+      }
+      await cacheSet(ck, { at: Date.now(), data: out })
+      return json(out, 200, 300)
     }
 
     if (path.endsWith('/klines')) {

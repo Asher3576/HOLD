@@ -42,6 +42,34 @@ export async function fetchQuotes(codes: string[]): Promise<Record<string, Quote
   }
 }
 
+// ─── AI 뉴스 브리핑 (엣지 /brief — Gemini 요약, 없으면 헤드라인만) ──────────
+export interface BriefItem {
+  tag: string
+  headline: string
+  link: string
+  rel: boolean
+}
+
+export interface Brief {
+  summary: string | null
+  items: BriefItem[]
+}
+
+export async function fetchBrief(labels: string[]): Promise<Brief | null> {
+  try {
+    const res = await fetch(`${FN_BASE}/brief?labels=${encodeURIComponent(labels.slice(0, 3).join(','))}`, {
+      headers: HEADERS,
+      signal: AbortSignal.timeout(25_000),
+    })
+    if (!res.ok) throw new Error(`http ${res.status}`)
+    const data = await res.json()
+    if (!Array.isArray(data?.items)) throw new Error('bad brief')
+    return { summary: typeof data.summary === 'string' ? data.summary : null, items: data.items as BriefItem[] }
+  } catch {
+    return null // 브리핑 실패는 조용히 — 결정적 문구로 폴백
+  }
+}
+
 const klinesCache = new Map<string, PricePoint[]>()
 
 /** 일봉 종가 → 차트 포인트. 실패 시 null (호출부 목데이터 폴백). */

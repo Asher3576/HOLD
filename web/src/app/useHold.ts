@@ -8,7 +8,7 @@ import type { Egg, Fruit, PlanMode, SheetKind, VaultPhase } from './model'
 import { codeFor, DIAL_BASE, DIAL_STEP, SEED_CASH, SELL_COUNTDOWN } from './model'
 import { baseFruits, initialEggs, initialHatchedMap } from './mock/design'
 import { ENTRY } from './mock/prices'
-import { fetchQuotes, type Quote } from './lib/api'
+import { fetchBrief, fetchQuotes, type Brief, type Quote } from './lib/api'
 import { supabase } from './lib/supabase'
 import * as db from './lib/db'
 import { reviewTags } from './review'
@@ -59,6 +59,8 @@ export interface HoldState {
   hStop: number
   hTarget: number
   toast: string | null
+  /** real 모드 AI 뉴스 브리핑 (엣지 /brief) — null 이면 결정적 문구 폴백 */
+  brief: Brief | null
   // 인증
   authReady: boolean
   userId: string | null
@@ -110,6 +112,7 @@ const initial: HoldState = {
   hStop: 228.0,
   hTarget: 253.0,
   toast: null,
+  brief: null,
   authReady: false,
   userId: null,
   userEmail: null,
@@ -293,6 +296,11 @@ export function useHold() {
       })
       pendingScore.current = fruits?.pending ?? []
       quotesFor.current = null // 시세 재로드 트리거
+      // AI 뉴스 브리핑 — 보유 종목명 기반 (실패해도 결정적 문구로 폴백)
+      const labels = Array.from(new Set((eggs ?? []).map((g) => g.name).filter(Boolean))).slice(0, 3)
+      void fetchBrief(labels).then((b) => {
+        if (b) set({ brief: b })
+      })
     })()
   }, [s.userId])
 
