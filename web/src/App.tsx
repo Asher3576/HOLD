@@ -164,7 +164,43 @@ export default function App() {
               </button>
             </div>
 
-            <HoldieZone hero={hero} tired={tired} newsOpen={s.newsOpen} onToggleNews={a.toggleNews} />
+            {/* 게스트 안내 — 데모 데이터임을 명시 */}
+            {!isReal && (
+              <div
+                style={{
+                  marginTop: 10,
+                  fontSize: 11,
+                  lineHeight: 1.55,
+                  color: '#C9A96A',
+                  background: 'rgba(245,178,62,0.07)',
+                  border: '1px solid rgba(245,178,62,0.22)',
+                  borderRadius: 11,
+                  padding: '8px 12px',
+                }}
+              >
+                게스트 데모 — 데이터가 저장되지 않아요. 로그인하면 진짜 선반이 시작돼요.
+              </div>
+            )}
+
+            <HoldieZone
+              hero={hero}
+              tired={tired}
+              newsOpen={s.newsOpen}
+              onToggleNews={a.toggleNews}
+              real={isReal}
+              eggCount={s.eggs.length}
+            />
+
+            {/* 핵심: 내 계획(알)들 — 금고보다 위 */}
+            <ShelfCard
+              eggs={s.eggs}
+              justAdded={s.justAdded}
+              onOpenEgg={a.openEgg}
+              onOpenPlanNew={() => a.openPlan('new', null)}
+              onWildPlan={(id) => a.openPlan('wild', id)}
+              onRenew={a.expiryRenew}
+              onSend={a.expirySend}
+            />
 
             <VaultCard
               phase={s.vaultPhase}
@@ -174,16 +210,6 @@ export default function App() {
               live={s.live}
               onDown={a.vaultDown}
               onUp={a.vaultUp}
-            />
-
-            <ShelfCard
-              eggs={s.eggs}
-              justAdded={s.justAdded}
-              onOpenEgg={a.openEgg}
-              onOpenPlanNew={() => a.openPlan('new', null)}
-              onWildPlan={(id) => a.openPlan('wild', id)}
-              onRenew={a.expiryRenew}
-              onSend={a.expirySend}
             />
 
             {reviewDone && <ReviewRecordCard rvA1={s.rvA1} rvA2={s.rvA2} />}
@@ -201,26 +227,52 @@ export default function App() {
 
         {(mode === 'guest' || mode === 'real') && (
           <>
-            {/* 하단 고정: 복기 */}
-            <button
-              onClick={a.openReview}
+            {/* 하단 고정 독 — 주행동(새 알 품기) + 보조(복기) */}
+            <div
               style={{
                 position: 'absolute',
                 left: 16,
                 right: 16,
-                bottom: 'calc(18px + env(safe-area-inset-bottom))',
+                bottom: 'calc(16px + env(safe-area-inset-bottom))',
                 zIndex: 20,
-                height: 52,
-                borderRadius: 16,
-                background: 'linear-gradient(180deg,#FF5A66,#E93D4C)',
-                color: '#FFFFFF',
-                fontSize: 14,
-                fontWeight: 700,
-                boxShadow: '0 10px 28px rgba(250,59,74,0.35)',
+                display: 'flex',
+                gap: 10,
               }}
             >
-              🎙 부엉이랑 3분 복기
-            </button>
+              <button
+                onClick={() => a.openPlan('new', null)}
+                style={{
+                  flex: 1.35,
+                  height: 52,
+                  borderRadius: 16,
+                  background: 'linear-gradient(180deg,#FF5A66,#E93D4C)',
+                  color: '#FFFFFF',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  boxShadow: '0 10px 28px rgba(250,59,74,0.35)',
+                }}
+              >
+                🥚 새 알 품기
+              </button>
+              <button
+                onClick={a.openReview}
+                style={{
+                  flex: 1,
+                  height: 52,
+                  borderRadius: 16,
+                  background: 'rgba(20,24,32,0.82)',
+                  border: '1px solid rgba(255,255,255,0.16)',
+                  color: '#F2F4F8',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  backdropFilter: 'blur(14px)',
+                  WebkitBackdropFilter: 'blur(14px)',
+                  boxShadow: '0 10px 24px rgba(0,0,0,0.35)',
+                }}
+              >
+                🎙 3분 복기
+              </button>
+            </div>
 
             <Sheets s={s} a={a} execPrice={execPrice} isReal={isReal} />
 

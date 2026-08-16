@@ -7,30 +7,43 @@ export interface HeroSpec {
   anim?: 'bob' | 'jump'
 }
 
-/** 히어로 존 — 인사이트 프렌즈 + 말풍선(논지 레이더) + 뉴스 14건 펼침 */
+/**
+ * 히어로 존 — 인사이트 프렌즈 + 말풍선.
+ * 게스트: 데모 논지 레이더(목 뉴스 14건 펼침).
+ * real: 실제 상태 기반 문구만 — 목데이터를 말하지 않는다(정직성 원칙).
+ */
 export default function HoldieZone({
   hero,
   tired,
   newsOpen,
   onToggleNews,
+  real = false,
+  eggCount = 0,
 }: {
   hero: HeroSpec
   tired: boolean
   newsOpen: boolean
   onToggleNews: () => void
+  real?: boolean
+  eggCount?: number
 }) {
-  const bubbleText = tired
-    ? '"새로운 건 없었어. 나만 피곤해졌어"'
-    : "오늘 뉴스 14개 읽었어. 1개는 확인해봐 — 네 'HBM 수요' 근거를 건드릴 수도 있어."
+  const bubbleText = real
+    ? eggCount === 0
+      ? '선반이 비어 있어 — 아래에서 첫 알(계획)을 품어봐.'
+      : `지금 알 ${eggCount}개 품는 중 — 수익률 대신, 계획대로 가는지만 봐.`
+    : tired
+      ? '"새로운 건 없었어. 나만 피곤해졌어"'
+      : "오늘 뉴스 14개 읽었어. 1개는 확인해봐 — 네 'HBM 수요' 근거를 건드릴 수도 있어."
+  const expandable = !real
   return (
-    <div style={{ marginTop: 18 }}>
+    <div style={{ marginTop: 14 }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-        <div style={{ flex: 'none', width: 104 }}>
-          <Mascot name={hero.name} mood={hero.mood} size={112} anim={hero.anim ?? 'bob'} />
+        <div style={{ flex: 'none', width: 92 }}>
+          <Mascot name={hero.name} mood={hero.mood} size={100} anim={hero.anim ?? 'bob'} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <button
-            onClick={onToggleNews}
+            onClick={expandable ? onToggleNews : undefined}
             className="bubble-tail"
             style={{
               position: 'relative',
@@ -45,30 +58,35 @@ export default function HoldieZone({
               backdropFilter: 'blur(16px)',
               WebkitBackdropFilter: 'blur(16px)',
               boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+              cursor: expandable ? 'pointer' : 'default',
             }}
           >
             <span style={{ display: 'block', fontSize: 13, lineHeight: 1.65, color: '#F2F4F8' }}>
               {bubbleText}
             </span>
-            <span style={{ display: 'block', marginTop: 7, fontSize: 10, color: '#6B7280' }}>
-              {newsOpen ? '탭해서 접기' : '탭해서 뉴스 14건 보기'}
-            </span>
+            {expandable && (
+              <span style={{ display: 'block', marginTop: 7, fontSize: 10, color: '#6B7280' }}>
+                {newsOpen ? '탭해서 접기' : '탭해서 뉴스 14건 보기 (데모)'}
+              </span>
+            )}
           </button>
-          <div
-            style={{
-              marginTop: 7,
-              paddingLeft: 4,
-              fontSize: 10.5,
-              color: '#6B7280',
-              fontVariantNumeric: 'tabular-nums',
-            }}
-          >
-            이번 주 21일 중 확인이 필요했던 날 2일
-          </div>
+          {!real && (
+            <div
+              style={{
+                marginTop: 7,
+                paddingLeft: 4,
+                fontSize: 10.5,
+                color: '#6B7280',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              이번 주 21일 중 확인이 필요했던 날 2일
+            </div>
+          )}
         </div>
       </div>
 
-      {newsOpen && (
+      {expandable && newsOpen && (
         <div
           style={{
             marginTop: 12,
