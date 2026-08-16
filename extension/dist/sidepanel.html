@@ -111,13 +111,65 @@
     <div class="card">
       <div class="label">손익비 계산</div>
       <div class="row" style="margin-top:9px">
-        <input id="rrEntry" class="in" type="number" placeholder="진입가" />
-        <input id="rrStop" class="in" type="number" placeholder="손절가" />
-        <input id="rrTarget" class="in" type="number" placeholder="목표가" />
+        <span class="dim" style="flex:0 0 42px;font-size:11.5px">진입가</span>
+        <input id="rrEntry" class="in" type="number" placeholder="현재가로 자동" />
+      </div>
+      <div class="row" style="margin-top:7px">
+        <span class="dim" style="flex:0 0 42px;font-size:11.5px">손절</span>
+        <input id="rrStop" class="in" type="number" placeholder="가격" />
+        <input id="rrStopPct" class="in" type="number" step="0.5" placeholder="%" style="flex:0 0 64px;text-align:right" />
+        <span class="dim" style="flex:0 0 20px;font-size:11.5px">%↓</span>
+      </div>
+      <div class="row" style="margin-top:7px">
+        <span class="dim" style="flex:0 0 42px;font-size:11.5px">목표</span>
+        <input id="rrTarget" class="in" type="number" placeholder="가격" />
+        <input id="rrTargetPct" class="in" type="number" step="0.5" placeholder="%" style="flex:0 0 64px;text-align:right" />
+        <span class="dim" style="flex:0 0 20px;font-size:11.5px">%↑</span>
       </div>
       <div id="rrOut" class="mono" style="margin-top:10px;font-size:18px;font-weight:700">손익비 —</div>
       <div id="rrNote" class="dim" style="font-size:11.5px;margin-top:3px"></div>
       <button id="rrDraw" class="ghost" style="width:100%;margin-top:10px">진입·손절·목표 차트에 긋기</button>
+      <div class="faint" style="margin-top:6px">가격이나 %, 아무 쪽이나 고치면 서로 맞춰져요</div>
+    </div>
+
+    <!-- HOLD 계정 · 모의 매매 -->
+    <div class="card">
+      <div class="row">
+        <span class="label">HOLD 계정 · 모의 매매</span>
+        <span style="flex:1"></span>
+        <span class="faint">실거래 없음 — 전부 모의</span>
+      </div>
+      <div id="authOut" style="margin-top:9px">
+        <input id="authEmail" class="in" type="email" placeholder="이메일" autocomplete="username" />
+        <input id="authPw" class="in" type="password" placeholder="비밀번호" autocomplete="current-password" style="margin-top:7px" />
+        <button id="authLogin" class="cta" style="margin-top:9px;height:36px">로그인</button>
+        <div id="authMsg" class="faint" style="margin-top:6px">계정이 없으면 HOLD 앱에서 가입해줘 — 웹과 같은 계정으로 연동돼요</div>
+      </div>
+      <div id="authIn" style="display:none">
+        <div class="row" style="margin-top:2px">
+          <span id="authWho" class="dim" style="font-size:11.5px"></span>
+          <span style="flex:1"></span>
+          <button id="authLogout" class="ghost" style="height:26px;font-size:10.5px;padding:0 9px">로그아웃</button>
+        </div>
+        <div class="row" style="margin-top:9px">
+          <span class="dim" style="font-size:11.5px">모의 현금</span>
+          <span style="flex:1"></span>
+          <span id="cashOut" class="mono" style="font-weight:700">…</span>
+        </div>
+        <div id="tradeBox" style="display:none">
+          <div class="row" style="margin-top:9px">
+            <input id="tQty" class="in" type="number" min="1" value="10" style="flex:0 0 76px;text-align:right" />
+            <span class="dim" style="flex:0 0 16px;font-size:11.5px">주</span>
+            <span style="flex:1"></span>
+            <span id="tCost" class="faint"></span>
+          </div>
+          <input id="tReason" class="in" placeholder="한 줄 이유 (선택) — 이 계획을 왜?" style="margin-top:7px" />
+          <button id="tBuy" class="cta" style="margin-top:9px;height:38px">현재가로 모의 매수</button>
+          <div class="faint" style="margin-top:6px">위 손익비의 손절/목표가 계획으로 함께 저장돼요 (30일)</div>
+        </div>
+        <div id="tradeMsg" class="faint" style="margin-top:6px;display:none"></div>
+        <div id="posList" style="margin-top:10px"></div>
+      </div>
     </div>
 
     <!-- 특이사항 · 뉴스 -->

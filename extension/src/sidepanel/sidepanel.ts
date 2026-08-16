@@ -6,6 +6,10 @@
 
 const FN = 'https://xpjtgmckrazfbyghkeve.supabase.co/functions/v1/prices'
 const APP_URL = 'https://hold.vercel.app' // 배포 주소가 다르면 여기만 교체
+// Supabase 퍼블리셔블 키 — 브라우저 노출용 공개 키 (시크릿 아님). 웹앱과 같은 프로젝트/계정.
+const SUPA = 'https://xpjtgmckrazfbyghkeve.supabase.co'
+const ANON = 'sb_publishable_YjEDQ3l-0wf3SM23JMTRqQ_R8_eqs9i'
+const SEED_CASH = 10_000_000
 
 interface Quote {
   price: number
@@ -241,8 +245,13 @@ async function loadSymbol(code: string, label: string) {
         $('symChange').textContent = `${up ? '+' : ''}${ch.toFixed(2)}%`
         $('symChange').style.color = up ? '#E36A5C' : '#7FA8E8'
       }
-      const entry = $<HTMLInputElement>('rrEntry')
-      if (!entry.value) entry.value = String(quote.price)
+      // 진입가는 종목이 바뀔 때마다 현재가로 갱신 (이전 종목 가격 잔존 방지)
+      $<HTMLInputElement>('rrEntry').value = String(rrRound(quote.price))
+      if (!$<HTMLInputElement>('rrStopPct').value) $<HTMLInputElement>('rrStopPct').value = '3'
+      if (!$<HTMLInputElement>('rrTargetPct').value) $<HTMLInputElement>('rrTargetPct').value = '12'
+      rrLast.stop = 'pct'
+      rrLast.target = 'pct'
+      rrSync('entry')
     } else {
       $('symPrice').textContent = '시세 없음'
     }
@@ -250,6 +259,7 @@ async function loadSymbol(code: string, label: string) {
     renderLevels()
     renderTrend()
     renderFacts()
+    renderTrade()
     void loadNews()
   } catch {
     $('symPrice').textContent = '연결 실패'
@@ -397,6 +407,38 @@ function renderLevels() {
 }
 
 // ─── 손익비 ───────────────────────────────────────────────────────────────
+/** 통화에 맞는 가격 반올림 — KRW 정수, USD 소수 2자리 */
+const rrRound = (n: number) => (quote?.currency === 'USD' ? Math.round(n * 100) / 100 : Math.round(n))
+
+/** 행마다 마지막으로 사용자가 만진 쪽(가격/%)이 기준 — 반대쪽을 맞춘다 */
+const rrLast: { stop: 'price' | 'pct'; target: 'price' | 'pct' } = { stop: 'pct', target: 'pct' }
+
+function rrSync(changed: 'entry' | 'stopPrice' | 'stopPct' | 'targetPrice' | 'targetPct') {
+  if (changed === 'stopPrice') rrLast.stop = 'price'
+  else if (changed === 'stopPct') rrLast.stop = 'pct'
+  else if (changed === 'targetPrice') rrLast.target = 'price'
+  else if (changed === 'targetPct') rrLast.target = 'pct'
+  const e = Number($<HTMLInputElement>('rrEntry').value)
+  if (e > 0) {
+    if (rrLast.stop === 'pct') {
+      const pct = Number($<HTMLInputElement>('rrStopPct').value)
+      if (pct > 0) $<HTMLInputElement>('rrStop').value = String(rrRound(e * (1 - pct / 100)))
+    } else {
+      const s = Number($<HTMLInputElement>('rrStop').value)
+      if (s > 0) $<HTMLInputElement>('rrStopPct').value = String(Math.round(((e - s) / e) * 1000) / 10)
+    }
+    if (rrLast.target === 'pct') {
+      const pct = Number($<HTMLInputElement>('rrTargetPct').value)
+      if (pct > 0) $<HTMLInputElement>('rrTarget').value = String(rrRound(e * (1 + pct / 100)))
+    } else {
+      const t = Number($<HTMLInputElement>('rrTarget').value)
+      if (t > 0) $<HTMLInputElement>('rrTargetPct').value = String(Math.round(((t - e) / e) * 1000) / 10)
+    }
+  }
+  calcRR()
+  renderTrade()
+}
+
 function calcRR() {
   const e = Number($<HTMLInputElement>('rrEntry').value)
   const s = Number($<HTMLInputElement>('rrStop').value)
@@ -423,6 +465,302 @@ function calcRR() {
     rr < 1
       ? `잃을 폭(${risk.toFixed(1)}%)이 벌 폭(${reward.toFixed(1)}%)보다 커요`
       : `벌 폭 +${reward.toFixed(1)}% vs 잃을 폭 −${risk.toFixed(1)}%`
+}
+
+// ─── HOLD 계정 · 모의 매매 (웹앱과 같은 Supabase — 실거래·주문 없음, 전부 모의) ────
+interface Sess {
+  access: string
+  refresh: string
+  exp: number
+  email: string
+  uid: string
+}
+
+let sess: Sess | null = null
+let cash: number | null = null
+interface Pos {
+  id: string
+  symbol: string
+  name: string
+  entry: number
+  qty: number
+}
+let positions: Pos[] = []
+
+async function loadSess() {
+  try {
+    const o = await chrome.storage.local.get('holdSess')
+    sess = (o.holdSess as Sess | undefined) ?? null
+  } catch {
+    sess = null
+  }
+}
+
+function saveSess() {
+  if (sess) void chrome.storage.local.set({ holdSess: sess })
+  else void chrome.storage.local.remove('holdSess')
+}
+
+/** 토큰이 곧 만료면 리프레시 — 실패 시 로그아웃 상태로 */
+async function ensureFresh(): Promise<boolean> {
+  if (!sess) return false
+  if (sess.exp - 60_000 > Date.now()) return true
+  try {
+    const r = await fetch(`${SUPA}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: { apikey: ANON, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: sess.refresh }),
+    })
+    const j = await r.json()
+    if (!r.ok || !j.access_token) throw new Error('refresh failed')
+    sess = {
+      access: j.access_token,
+      refresh: j.refresh_token ?? sess.refresh,
+      exp: Date.now() + (Number(j.expires_in) || 3600) * 1000,
+      email: j.user?.email ?? sess.email,
+      uid: j.user?.id ?? sess.uid,
+    }
+    saveSess()
+    return true
+  } catch {
+    sess = null
+    saveSess()
+    renderAuth()
+    return false
+  }
+}
+
+async function rest(path: string, init: RequestInit = {}): Promise<Response | null> {
+  if (!(await ensureFresh()) || !sess) return null
+  try {
+    return await fetch(`${SUPA}/rest/v1${path}`, {
+      ...init,
+      headers: {
+        apikey: ANON,
+        Authorization: `Bearer ${sess.access}`,
+        'Content-Type': 'application/json',
+        ...((init.headers as Record<string, string>) ?? {}),
+      },
+    })
+  } catch {
+    return null
+  }
+}
+
+/** 성공 시 null, 실패 시 사용자에게 보여줄 메시지 */
+async function login(email: string, pw: string): Promise<string | null> {
+  try {
+    const r = await fetch(`${SUPA}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: { apikey: ANON, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pw }),
+    })
+    const j = await r.json().catch(() => ({}))
+    if (!r.ok || !j.access_token) {
+      const msg = String(j.error_description || j.msg || '')
+      if (/confirm/i.test(msg)) return '이메일 인증이 안 됐어 — 메일함을 확인해줘'
+      return '로그인 실패 — 이메일/비밀번호를 확인해줘'
+    }
+    sess = {
+      access: j.access_token,
+      refresh: j.refresh_token,
+      exp: Date.now() + (Number(j.expires_in) || 3600) * 1000,
+      email: j.user?.email ?? email,
+      uid: j.user?.id ?? '',
+    }
+    saveSess()
+    return null
+  } catch {
+    return '연결 실패 — 잠시 후 다시 시도해줘'
+  }
+}
+
+async function loadAccount() {
+  if (!sess) return
+  cash = null
+  positions = []
+  const a = await rest(`/paper_accounts?user_id=eq.${sess.uid}&select=cash`)
+  if (a?.ok) {
+    const rows = (await a.json()) as { cash: number }[]
+    if (rows.length) {
+      cash = Number(rows[0].cash)
+    } else {
+      const c = await rest('/paper_accounts', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: sess.uid, cash: SEED_CASH }),
+      })
+      if (c && (c.ok || c.status === 409)) cash = SEED_CASH
+    }
+  }
+  const p = await rest(
+    `/plans?user_id=eq.${sess.uid}&status=eq.active&dismissed_at=is.null` +
+      `&select=id,symbol,symbol_name,entry_price,quantity&order=created_at.asc`,
+  )
+  if (p?.ok) {
+    const rows = (await p.json()) as {
+      id: string
+      symbol: string
+      symbol_name: string | null
+      entry_price: number | null
+      quantity: number | null
+    }[]
+    positions = rows.map((r) => ({
+      id: r.id,
+      symbol: r.symbol,
+      name: r.symbol_name || r.symbol,
+      entry: Number(r.entry_price) || 0,
+      qty: Number(r.quantity) || 0,
+    }))
+  }
+  renderAuth()
+}
+
+function persistCash() {
+  if (sess && cash != null) {
+    void rest(`/paper_accounts?user_id=eq.${sess.uid}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ cash, updated_at: new Date().toISOString() }),
+    })
+  }
+}
+
+function tnote(msg: string, ok = true) {
+  const el = $('tradeMsg')
+  el.style.display = 'block'
+  el.textContent = msg
+  el.style.color = ok ? '#57C7A4' : '#FF6B77'
+  setTimeout(() => (el.style.display = 'none'), 5000)
+}
+
+const curOf = (code: string) => (/^\d{6}$/.test(code) ? 'KRW' : 'USD')
+
+/** 모의 매수 — 웹의 createPlan 과 같은 형태로 계획(알)을 만든다 */
+async function paperBuy() {
+  if (!sess || !quote || !symbol) return
+  const qty = Math.max(1, Math.floor(Number($<HTMLInputElement>('tQty').value) || 0))
+  const price = quote.price
+  const cost = qty * price
+  if (cash != null && cost > cash) {
+    tnote(`모의 현금이 부족해 — 필요 ${fmt(cost, quote.currency)}, 보유 ${fmt(cash, quote.currency)}`, false)
+    return
+  }
+  const stopPct = Math.abs(Number($<HTMLInputElement>('rrStopPct').value)) || 3
+  const takePct = Math.abs(Number($<HTMLInputElement>('rrTargetPct').value)) || 12
+  const reason = $<HTMLInputElement>('tReason').value.trim() || '사이드패널에서 기록'
+  const r = await rest('/plans', {
+    method: 'POST',
+    body: JSON.stringify({
+      user_id: sess.uid,
+      symbol,
+      symbol_name: symbolLabel || symbol,
+      entry_price: price,
+      quantity: qty,
+      stop_pct: stopPct,
+      take_pct: takePct,
+      horizon_days: 30,
+      reason,
+      origin_stop_pct: stopPct,
+      origin_take_pct: takePct,
+      origin_horizon_days: 30,
+    }),
+  })
+  if (!r?.ok) {
+    tnote('모의 매수 실패 — 잠시 후 다시 시도해줘', false)
+    return
+  }
+  if (cash != null) {
+    cash -= cost
+    persistCash()
+  }
+  $<HTMLInputElement>('tReason').value = ''
+  tnote(`${symbolLabel || symbol} ${qty}주 모의 매수 · ${fmt(cost, quote.currency)} — 앱 선반에 새 알이 올라갔어`)
+  void loadAccount()
+}
+
+/** 모의 매도 (조기 매도) — 웹의 endPlan('sold_early') 과 동일 */
+async function paperSell(p: Pos) {
+  if (!sess) return
+  let priceNow = p.symbol === symbol && quote ? quote.price : 0
+  if (!priceNow) {
+    try {
+      const j = await fetch(`${FN}/quotes?symbols=${encodeURIComponent(p.symbol)}`).then((r) => r.json())
+      priceNow = Number(j?.quotes?.[p.symbol]?.price) || p.entry
+    } catch {
+      priceNow = p.entry
+    }
+  }
+  const proceeds = p.qty * priceNow
+  const r = await rest(`/plans?id=eq.${p.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: 'sold_early', ended_at: new Date().toISOString() }),
+  })
+  if (!r?.ok) {
+    tnote('모의 매도 실패 — 잠시 후 다시 시도해줘', false)
+    return
+  }
+  if (cash != null) {
+    cash += proceeds
+    persistCash()
+  }
+  tnote(`${p.name} ${p.qty}주 모의 매도 — ${fmt(proceeds, curOf(p.symbol))} 회수`)
+  void loadAccount()
+}
+
+function renderAuth() {
+  const signedIn = !!sess
+  $('authOut').style.display = signedIn ? 'none' : 'block'
+  $('authIn').style.display = signedIn ? 'block' : 'none'
+  if (!signedIn) return
+  $('authWho').textContent = sess!.email
+  $('cashOut').textContent = cash != null ? fmt(cash, 'KRW') : '…'
+  renderTrade()
+  const list = $('posList')
+  list.innerHTML = ''
+  if (positions.length) {
+    const head = document.createElement('div')
+    head.className = 'faint'
+    head.textContent = `품고 있는 알 ${positions.length}개`
+    list.appendChild(head)
+  }
+  for (const p of positions.slice(0, 8)) {
+    const row = document.createElement('div')
+    row.className = 'row'
+    row.style.cssText = 'margin-top:6px'
+    const name = document.createElement('span')
+    name.textContent = p.name
+    name.style.cssText = `font-size:12px;font-weight:600;${p.symbol === symbol ? 'color:#57C7A4' : ''}`
+    const info = document.createElement('span')
+    info.className = 'mono dim'
+    info.style.fontSize = '11px'
+    info.textContent = `${p.qty}주 @ ${fmt(p.entry, curOf(p.symbol))}`
+    const sp = document.createElement('span')
+    sp.style.flex = '1'
+    const btn = document.createElement('button')
+    btn.className = 'ghost'
+    btn.style.cssText = 'height:26px;font-size:10.5px;padding:0 9px'
+    btn.textContent = '모의 매도'
+    btn.addEventListener('click', () => void paperSell(p))
+    row.append(name, info, sp, btn)
+    list.appendChild(row)
+  }
+  if (positions.length > 8) {
+    const more = document.createElement('div')
+    more.className = 'faint'
+    more.style.marginTop = '6px'
+    more.textContent = `외 ${positions.length - 8}개는 HOLD 앱에서`
+    list.appendChild(more)
+  }
+}
+
+/** 매수 박스 — 로그인 + 종목 시세가 있을 때만 */
+function renderTrade() {
+  if (!sess) return
+  const box = $('tradeBox')
+  const on = !!(quote && symbol)
+  box.style.display = on ? 'block' : 'none'
+  if (!on) return
+  const qty = Math.max(1, Math.floor(Number($<HTMLInputElement>('tQty').value) || 0))
+  $('tCost').textContent = `${symbolLabel || symbol} · ${fmt(qty * quote!.price, quote!.currency)}`
 }
 
 // ─── 네이티브 작도 (토스/트레이딩뷰 차트 내부 위젯 — 비공식, 실패 시 오버레이 폴백) ──
@@ -793,10 +1131,52 @@ $('clearAll').addEventListener('click', () => {
   void tvNativeClear() // 차트 자체에 그린 선
   void send({ type: 'HOLD_CLEAR' }) // 오버레이에 그린 선
 })
-for (const id of ['rrEntry', 'rrStop', 'rrTarget']) {
-  $<HTMLInputElement>(id).addEventListener('input', calcRR)
+const RR_WIRING: Array<[string, Parameters<typeof rrSync>[0]]> = [
+  ['rrEntry', 'entry'],
+  ['rrStop', 'stopPrice'],
+  ['rrStopPct', 'stopPct'],
+  ['rrTarget', 'targetPrice'],
+  ['rrTargetPct', 'targetPct'],
+]
+for (const [id, kind] of RR_WIRING) {
+  $<HTMLInputElement>(id).addEventListener('input', () => rrSync(kind))
 }
+
+// 계정 · 모의 매매
+$('authLogin').addEventListener('click', () => {
+  void (async () => {
+    const email = $<HTMLInputElement>('authEmail').value.trim()
+    const pw = $<HTMLInputElement>('authPw').value
+    if (!email || !pw) return
+    $('authMsg').textContent = '로그인 중…'
+    const err = await login(email, pw)
+    if (err) {
+      $('authMsg').textContent = err
+      return
+    }
+    $<HTMLInputElement>('authPw').value = ''
+    renderAuth()
+    void loadAccount()
+  })()
+})
+$<HTMLInputElement>('authPw').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('authLogin').click()
+})
+$('authLogout').addEventListener('click', () => {
+  sess = null
+  cash = null
+  positions = []
+  saveSess()
+  renderAuth()
+})
+$('tBuy').addEventListener('click', () => void paperBuy())
+$<HTMLInputElement>('tQty').addEventListener('input', renderTrade)
 ;($('appLink') as HTMLAnchorElement).href = APP_URL
+
+void loadSess().then(() => {
+  renderAuth()
+  if (sess) void loadAccount()
+})
 
 chrome.tabs.onActivated.addListener(() => void syncTab())
 chrome.tabs.onUpdated.addListener((_id, info) => {

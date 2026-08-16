@@ -3,6 +3,9 @@
   // src/sidepanel/sidepanel.ts
   var FN = "https://xpjtgmckrazfbyghkeve.supabase.co/functions/v1/prices";
   var APP_URL = "https://hold.vercel.app";
+  var SUPA = "https://xpjtgmckrazfbyghkeve.supabase.co";
+  var ANON = "sb_publishable_YjEDQ3l-0wf3SM23JMTRqQ_R8_eqs9i";
+  var SEED_CASH = 1e7;
   var tabId = null;
   var symbol = null;
   var symbolLabel = "";
@@ -186,8 +189,12 @@
           $("symChange").textContent = `${up ? "+" : ""}${ch.toFixed(2)}%`;
           $("symChange").style.color = up ? "#E36A5C" : "#7FA8E8";
         }
-        const entry = $("rrEntry");
-        if (!entry.value) entry.value = String(quote.price);
+        $("rrEntry").value = String(rrRound(quote.price));
+        if (!$("rrStopPct").value) $("rrStopPct").value = "3";
+        if (!$("rrTargetPct").value) $("rrTargetPct").value = "12";
+        rrLast.stop = "pct";
+        rrLast.target = "pct";
+        rrSync("entry");
       } else {
         $("symPrice").textContent = "\uC2DC\uC138 \uC5C6\uC74C";
       }
@@ -195,6 +202,7 @@
       renderLevels();
       renderTrend();
       renderFacts();
+      renderTrade();
       void loadNews();
     } catch {
       $("symPrice").textContent = "\uC5F0\uACB0 \uC2E4\uD328";
@@ -324,6 +332,33 @@
       list.appendChild(row);
     }
   }
+  var rrRound = (n) => quote?.currency === "USD" ? Math.round(n * 100) / 100 : Math.round(n);
+  var rrLast = { stop: "pct", target: "pct" };
+  function rrSync(changed) {
+    if (changed === "stopPrice") rrLast.stop = "price";
+    else if (changed === "stopPct") rrLast.stop = "pct";
+    else if (changed === "targetPrice") rrLast.target = "price";
+    else if (changed === "targetPct") rrLast.target = "pct";
+    const e = Number($("rrEntry").value);
+    if (e > 0) {
+      if (rrLast.stop === "pct") {
+        const pct = Number($("rrStopPct").value);
+        if (pct > 0) $("rrStop").value = String(rrRound(e * (1 - pct / 100)));
+      } else {
+        const s = Number($("rrStop").value);
+        if (s > 0) $("rrStopPct").value = String(Math.round((e - s) / e * 1e3) / 10);
+      }
+      if (rrLast.target === "pct") {
+        const pct = Number($("rrTargetPct").value);
+        if (pct > 0) $("rrTarget").value = String(rrRound(e * (1 + pct / 100)));
+      } else {
+        const t = Number($("rrTarget").value);
+        if (t > 0) $("rrTargetPct").value = String(Math.round((t - e) / e * 1e3) / 10);
+      }
+    }
+    calcRR();
+    renderTrade();
+  }
   function calcRR() {
     const e = Number($("rrEntry").value);
     const s = Number($("rrStop").value);
@@ -347,6 +382,260 @@
     out.textContent = `\uC190\uC775\uBE44 1 : ${(Math.round(rr * 10) / 10).toFixed(1)}`;
     out.style.color = rr < 1 ? "#FF6B77" : "#F2F4F8";
     note.textContent = rr < 1 ? `\uC783\uC744 \uD3ED(${risk.toFixed(1)}%)\uC774 \uBC8C \uD3ED(${reward.toFixed(1)}%)\uBCF4\uB2E4 \uCEE4\uC694` : `\uBC8C \uD3ED +${reward.toFixed(1)}% vs \uC783\uC744 \uD3ED \u2212${risk.toFixed(1)}%`;
+  }
+  var sess = null;
+  var cash = null;
+  var positions = [];
+  async function loadSess() {
+    try {
+      const o = await chrome.storage.local.get("holdSess");
+      sess = o.holdSess ?? null;
+    } catch {
+      sess = null;
+    }
+  }
+  function saveSess() {
+    if (sess) void chrome.storage.local.set({ holdSess: sess });
+    else void chrome.storage.local.remove("holdSess");
+  }
+  async function ensureFresh() {
+    if (!sess) return false;
+    if (sess.exp - 6e4 > Date.now()) return true;
+    try {
+      const r = await fetch(`${SUPA}/auth/v1/token?grant_type=refresh_token`, {
+        method: "POST",
+        headers: { apikey: ANON, "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: sess.refresh })
+      });
+      const j = await r.json();
+      if (!r.ok || !j.access_token) throw new Error("refresh failed");
+      sess = {
+        access: j.access_token,
+        refresh: j.refresh_token ?? sess.refresh,
+        exp: Date.now() + (Number(j.expires_in) || 3600) * 1e3,
+        email: j.user?.email ?? sess.email,
+        uid: j.user?.id ?? sess.uid
+      };
+      saveSess();
+      return true;
+    } catch {
+      sess = null;
+      saveSess();
+      renderAuth();
+      return false;
+    }
+  }
+  async function rest(path, init = {}) {
+    if (!await ensureFresh() || !sess) return null;
+    try {
+      return await fetch(`${SUPA}/rest/v1${path}`, {
+        ...init,
+        headers: {
+          apikey: ANON,
+          Authorization: `Bearer ${sess.access}`,
+          "Content-Type": "application/json",
+          ...init.headers ?? {}
+        }
+      });
+    } catch {
+      return null;
+    }
+  }
+  async function login(email, pw) {
+    try {
+      const r = await fetch(`${SUPA}/auth/v1/token?grant_type=password`, {
+        method: "POST",
+        headers: { apikey: ANON, "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password: pw })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.access_token) {
+        const msg = String(j.error_description || j.msg || "");
+        if (/confirm/i.test(msg)) return "\uC774\uBA54\uC77C \uC778\uC99D\uC774 \uC548 \uB410\uC5B4 \u2014 \uBA54\uC77C\uD568\uC744 \uD655\uC778\uD574\uC918";
+        return "\uB85C\uADF8\uC778 \uC2E4\uD328 \u2014 \uC774\uBA54\uC77C/\uBE44\uBC00\uBC88\uD638\uB97C \uD655\uC778\uD574\uC918";
+      }
+      sess = {
+        access: j.access_token,
+        refresh: j.refresh_token,
+        exp: Date.now() + (Number(j.expires_in) || 3600) * 1e3,
+        email: j.user?.email ?? email,
+        uid: j.user?.id ?? ""
+      };
+      saveSess();
+      return null;
+    } catch {
+      return "\uC5F0\uACB0 \uC2E4\uD328 \u2014 \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574\uC918";
+    }
+  }
+  async function loadAccount() {
+    if (!sess) return;
+    cash = null;
+    positions = [];
+    const a = await rest(`/paper_accounts?user_id=eq.${sess.uid}&select=cash`);
+    if (a?.ok) {
+      const rows = await a.json();
+      if (rows.length) {
+        cash = Number(rows[0].cash);
+      } else {
+        const c = await rest("/paper_accounts", {
+          method: "POST",
+          body: JSON.stringify({ user_id: sess.uid, cash: SEED_CASH })
+        });
+        if (c && (c.ok || c.status === 409)) cash = SEED_CASH;
+      }
+    }
+    const p = await rest(
+      `/plans?user_id=eq.${sess.uid}&status=eq.active&dismissed_at=is.null&select=id,symbol,symbol_name,entry_price,quantity&order=created_at.asc`
+    );
+    if (p?.ok) {
+      const rows = await p.json();
+      positions = rows.map((r) => ({
+        id: r.id,
+        symbol: r.symbol,
+        name: r.symbol_name || r.symbol,
+        entry: Number(r.entry_price) || 0,
+        qty: Number(r.quantity) || 0
+      }));
+    }
+    renderAuth();
+  }
+  function persistCash() {
+    if (sess && cash != null) {
+      void rest(`/paper_accounts?user_id=eq.${sess.uid}`, {
+        method: "PATCH",
+        body: JSON.stringify({ cash, updated_at: (/* @__PURE__ */ new Date()).toISOString() })
+      });
+    }
+  }
+  function tnote(msg, ok = true) {
+    const el = $("tradeMsg");
+    el.style.display = "block";
+    el.textContent = msg;
+    el.style.color = ok ? "#57C7A4" : "#FF6B77";
+    setTimeout(() => el.style.display = "none", 5e3);
+  }
+  var curOf = (code) => /^\d{6}$/.test(code) ? "KRW" : "USD";
+  async function paperBuy() {
+    if (!sess || !quote || !symbol) return;
+    const qty = Math.max(1, Math.floor(Number($("tQty").value) || 0));
+    const price = quote.price;
+    const cost = qty * price;
+    if (cash != null && cost > cash) {
+      tnote(`\uBAA8\uC758 \uD604\uAE08\uC774 \uBD80\uC871\uD574 \u2014 \uD544\uC694 ${fmt(cost, quote.currency)}, \uBCF4\uC720 ${fmt(cash, quote.currency)}`, false);
+      return;
+    }
+    const stopPct = Math.abs(Number($("rrStopPct").value)) || 3;
+    const takePct = Math.abs(Number($("rrTargetPct").value)) || 12;
+    const reason = $("tReason").value.trim() || "\uC0AC\uC774\uB4DC\uD328\uB110\uC5D0\uC11C \uAE30\uB85D";
+    const r = await rest("/plans", {
+      method: "POST",
+      body: JSON.stringify({
+        user_id: sess.uid,
+        symbol,
+        symbol_name: symbolLabel || symbol,
+        entry_price: price,
+        quantity: qty,
+        stop_pct: stopPct,
+        take_pct: takePct,
+        horizon_days: 30,
+        reason,
+        origin_stop_pct: stopPct,
+        origin_take_pct: takePct,
+        origin_horizon_days: 30
+      })
+    });
+    if (!r?.ok) {
+      tnote("\uBAA8\uC758 \uB9E4\uC218 \uC2E4\uD328 \u2014 \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574\uC918", false);
+      return;
+    }
+    if (cash != null) {
+      cash -= cost;
+      persistCash();
+    }
+    $("tReason").value = "";
+    tnote(`${symbolLabel || symbol} ${qty}\uC8FC \uBAA8\uC758 \uB9E4\uC218 \xB7 ${fmt(cost, quote.currency)} \u2014 \uC571 \uC120\uBC18\uC5D0 \uC0C8 \uC54C\uC774 \uC62C\uB77C\uAC14\uC5B4`);
+    void loadAccount();
+  }
+  async function paperSell(p) {
+    if (!sess) return;
+    let priceNow = p.symbol === symbol && quote ? quote.price : 0;
+    if (!priceNow) {
+      try {
+        const j = await fetch(`${FN}/quotes?symbols=${encodeURIComponent(p.symbol)}`).then((r2) => r2.json());
+        priceNow = Number(j?.quotes?.[p.symbol]?.price) || p.entry;
+      } catch {
+        priceNow = p.entry;
+      }
+    }
+    const proceeds = p.qty * priceNow;
+    const r = await rest(`/plans?id=eq.${p.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "sold_early", ended_at: (/* @__PURE__ */ new Date()).toISOString() })
+    });
+    if (!r?.ok) {
+      tnote("\uBAA8\uC758 \uB9E4\uB3C4 \uC2E4\uD328 \u2014 \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574\uC918", false);
+      return;
+    }
+    if (cash != null) {
+      cash += proceeds;
+      persistCash();
+    }
+    tnote(`${p.name} ${p.qty}\uC8FC \uBAA8\uC758 \uB9E4\uB3C4 \u2014 ${fmt(proceeds, curOf(p.symbol))} \uD68C\uC218`);
+    void loadAccount();
+  }
+  function renderAuth() {
+    const signedIn = !!sess;
+    $("authOut").style.display = signedIn ? "none" : "block";
+    $("authIn").style.display = signedIn ? "block" : "none";
+    if (!signedIn) return;
+    $("authWho").textContent = sess.email;
+    $("cashOut").textContent = cash != null ? fmt(cash, "KRW") : "\u2026";
+    renderTrade();
+    const list = $("posList");
+    list.innerHTML = "";
+    if (positions.length) {
+      const head = document.createElement("div");
+      head.className = "faint";
+      head.textContent = `\uD488\uACE0 \uC788\uB294 \uC54C ${positions.length}\uAC1C`;
+      list.appendChild(head);
+    }
+    for (const p of positions.slice(0, 8)) {
+      const row = document.createElement("div");
+      row.className = "row";
+      row.style.cssText = "margin-top:6px";
+      const name = document.createElement("span");
+      name.textContent = p.name;
+      name.style.cssText = `font-size:12px;font-weight:600;${p.symbol === symbol ? "color:#57C7A4" : ""}`;
+      const info = document.createElement("span");
+      info.className = "mono dim";
+      info.style.fontSize = "11px";
+      info.textContent = `${p.qty}\uC8FC @ ${fmt(p.entry, curOf(p.symbol))}`;
+      const sp = document.createElement("span");
+      sp.style.flex = "1";
+      const btn = document.createElement("button");
+      btn.className = "ghost";
+      btn.style.cssText = "height:26px;font-size:10.5px;padding:0 9px";
+      btn.textContent = "\uBAA8\uC758 \uB9E4\uB3C4";
+      btn.addEventListener("click", () => void paperSell(p));
+      row.append(name, info, sp, btn);
+      list.appendChild(row);
+    }
+    if (positions.length > 8) {
+      const more = document.createElement("div");
+      more.className = "faint";
+      more.style.marginTop = "6px";
+      more.textContent = `\uC678 ${positions.length - 8}\uAC1C\uB294 HOLD \uC571\uC5D0\uC11C`;
+      list.appendChild(more);
+    }
+  }
+  function renderTrade() {
+    if (!sess) return;
+    const box = $("tradeBox");
+    const on = !!(quote && symbol);
+    box.style.display = on ? "block" : "none";
+    if (!on) return;
+    const qty = Math.max(1, Math.floor(Number($("tQty").value) || 0));
+    $("tCost").textContent = `${symbolLabel || symbol} \xB7 ${fmt(qty * quote.price, quote.currency)}`;
   }
   async function tvNativeDraw(lines) {
     if (tabId == null) return 0;
@@ -657,10 +946,49 @@
     void tvNativeClear();
     void send({ type: "HOLD_CLEAR" });
   });
-  for (const id of ["rrEntry", "rrStop", "rrTarget"]) {
-    $(id).addEventListener("input", calcRR);
+  var RR_WIRING = [
+    ["rrEntry", "entry"],
+    ["rrStop", "stopPrice"],
+    ["rrStopPct", "stopPct"],
+    ["rrTarget", "targetPrice"],
+    ["rrTargetPct", "targetPct"]
+  ];
+  for (const [id, kind] of RR_WIRING) {
+    $(id).addEventListener("input", () => rrSync(kind));
   }
+  $("authLogin").addEventListener("click", () => {
+    void (async () => {
+      const email = $("authEmail").value.trim();
+      const pw = $("authPw").value;
+      if (!email || !pw) return;
+      $("authMsg").textContent = "\uB85C\uADF8\uC778 \uC911\u2026";
+      const err = await login(email, pw);
+      if (err) {
+        $("authMsg").textContent = err;
+        return;
+      }
+      $("authPw").value = "";
+      renderAuth();
+      void loadAccount();
+    })();
+  });
+  $("authPw").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") $("authLogin").click();
+  });
+  $("authLogout").addEventListener("click", () => {
+    sess = null;
+    cash = null;
+    positions = [];
+    saveSess();
+    renderAuth();
+  });
+  $("tBuy").addEventListener("click", () => void paperBuy());
+  $("tQty").addEventListener("input", renderTrade);
   $("appLink").href = APP_URL;
+  void loadSess().then(() => {
+    renderAuth();
+    if (sess) void loadAccount();
+  });
   chrome.tabs.onActivated.addListener(() => void syncTab());
   chrome.tabs.onUpdated.addListener((_id, info) => {
     if (info.status === "complete" || info.url) void syncTab();
