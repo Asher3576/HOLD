@@ -1,5 +1,48 @@
 "use strict";
 (() => {
+  // src/insight/stock-characters.js
+  var UID = 0;
+  var RATIO = 400 / 440;
+  var ART = {
+    bull: '<svg xmlns="http://www.w3.org/2000/svg" data-char="bull" viewBox="0 0 400 440" __SIZE__ role="img" aria-label="\uD314\uC9F1 \uB080 \uD669\uC18C \uCE90\uB9AD\uD130"><defs><filter id="fzbull__UID__" x="-12%" y="-12%" width="124%" height="124%"><feTurbulence type="turbulence" baseFrequency="0.18 0.22" numOctaves="3" seed="8" result="n"></feTurbulence><feDisplacementMap in="SourceGraphic" in2="n" scale="16" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap></filter><filter id="wbbull__UID__" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="2" seed="4" result="n"></feTurbulence><feDisplacementMap in="SourceGraphic" in2="n" scale="7"></feDisplacementMap></filter></defs><ellipse cx="200" cy="428" rx="122" ry="9" fill="#DDD5BC"></ellipse><g filter="url(#wbbull__UID__)"><path d="M136,120 C100,112 66,86 56,34 C94,46 128,76 140,102 C142,110 141,116 136,120 Z" fill="#EDCA82"></path><path d="M264,120 C300,112 334,86 344,34 C306,46 272,76 260,102 C258,110 259,116 264,120 Z" fill="#EDCA82"></path></g><g filter="url(#fzbull__UID__)" fill="#FB4148"><ellipse cx="200" cy="170" rx="128" ry="106"></ellipse><ellipse cx="200" cy="298" rx="118" ry="100"></ellipse><ellipse cx="92" cy="320" rx="34" ry="50" transform="rotate(10 92 320)"></ellipse><ellipse cx="308" cy="320" rx="34" ry="50" transform="rotate(-10 308 320)"></ellipse><rect x="148" y="372" width="46" height="42" rx="17"></rect><rect x="206" y="372" width="46" height="42" rx="17"></rect></g><g filter="url(#wbbull__UID__)"><circle cx="200" cy="288" r="14" fill="none" stroke="#F5B23E" stroke-width="7"></circle><ellipse cx="200" cy="250" rx="52" ry="32" fill="#C9273C"></ellipse><ellipse cx="176" cy="246" rx="9" ry="12" fill="#111111" transform="rotate(-10 176 246)"></ellipse><ellipse cx="224" cy="246" rx="9" ry="12" fill="#111111" transform="rotate(10 224 246)"></ellipse><rect x="142" y="398" width="56" height="24" rx="11" fill="#35242E"></rect><rect x="202" y="398" width="56" height="24" rx="11" fill="#35242E"></rect><path d="__BROWL__" fill="none" stroke="#111111" stroke-width="11" stroke-linecap="round"></path><path d="__BROWR__" fill="none" stroke="#111111" stroke-width="11" stroke-linecap="round"></path><rect x="140" y="164" width="32" height="46" rx="15" fill="#111111"></rect><rect x="228" y="164" width="32" height="46" rx="15" fill="#111111"></rect><path d="__MOUTH__" fill="none" stroke="#111111" stroke-width="8" stroke-linecap="round"></path><path d="M102,326 C152,312 206,314 232,324" fill="none" stroke="#111111" stroke-width="8" stroke-linecap="round"></path><path d="M298,346 C252,330 196,334 168,344" fill="none" stroke="#111111" stroke-width="8" stroke-linecap="round"></path><path d="M232,324 C242,329 242,338 234,342" fill="none" stroke="#111111" stroke-width="8" stroke-linecap="round"></path><path d="M168,344 C159,348 158,356 166,359" fill="none" stroke="#111111" stroke-width="8" stroke-linecap="round"></path></g><g data-part="doodles" filter="url(#wbbull__UID__)" fill="none" stroke="__DOODLECOLOR__" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M36,148 L66,148 L66,112 L96,112 L96,76 L110,76"></path><path d="M100,66 L114,74 L104,88"></path><path d="M118,34 L118,54 M108,44 L128,44"></path><path d="M338,96 L338,110 M331,110 L345,110 L345,140 L331,140 Z M338,140 L338,152"></path><path d="M362,120 L362,132 M356,132 L368,132 L368,156 L356,156 Z M362,156 L362,166"></path><path d="M352,44 L356,56 L368,60 L356,64 L352,76 L348,64 L336,60 L348,56 Z"></path><path d="M36,206 L39,215 L48,218 L39,221 L36,230 L33,221 L24,218 L33,215 Z"></path><circle cx="44" cy="394" r="15"></circle><path d="M36,394 L52,394"></path><circle cx="76" cy="414" r="11"></circle><path d="M70,414 L82,414"></path></g></svg>',
+    bear: '<svg xmlns="http://www.w3.org/2000/svg" data-char="bear" viewBox="0 0 400 440" __SIZE__ role="img" aria-label="\uAC71\uC815\uD558\uB294 \uACF0 \uCE90\uB9AD\uD130"><defs><filter id="fzbear__UID__" x="-12%" y="-12%" width="124%" height="124%"><feTurbulence type="turbulence" baseFrequency="0.18 0.22" numOctaves="3" seed="3" result="n"></feTurbulence><feDisplacementMap in="SourceGraphic" in2="n" scale="16" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap></filter><filter id="wbbear__UID__" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="2" seed="5" result="n"></feTurbulence><feDisplacementMap in="SourceGraphic" in2="n" scale="7"></feDisplacementMap></filter></defs><ellipse cx="200" cy="424" rx="118" ry="9" fill="#DDD5BC"></ellipse><g filter="url(#fzbear__UID__)" fill="#4B7FE3"><circle cx="118" cy="84" r="36"></circle><circle cx="282" cy="84" r="36"></circle><ellipse cx="200" cy="172" rx="122" ry="102"></ellipse><ellipse cx="200" cy="296" rx="112" ry="96"></ellipse><ellipse cx="98" cy="288" rx="28" ry="58" transform="rotate(12 98 288)"></ellipse><ellipse cx="302" cy="288" rx="28" ry="58" transform="rotate(-12 302 288)"></ellipse><rect x="150" y="368" width="44" height="40" rx="16"></rect><rect x="206" y="368" width="44" height="40" rx="16"></rect></g><g filter="url(#wbbear__UID__)"><circle cx="118" cy="86" r="15" fill="#2B4C8F"></circle><circle cx="282" cy="86" r="15" fill="#2B4C8F"></circle><ellipse cx="200" cy="248" rx="50" ry="33" fill="#8FB3F2"></ellipse><ellipse cx="200" cy="238" rx="12" ry="9" fill="#111111"></ellipse><path d="M200,247 L200,258" stroke="#111111" stroke-width="5" stroke-linecap="round"></path><path d="M184,268 Q200,258 216,268" fill="none" stroke="#111111" stroke-width="7" stroke-linecap="round"></path><path d="M130,156 C150,150 170,142 186,138" fill="none" stroke="#111111" stroke-width="10" stroke-linecap="round"></path><path d="M270,156 C250,150 230,142 214,138" fill="none" stroke="#111111" stroke-width="10" stroke-linecap="round"></path><rect x="146" y="164" width="28" height="40" rx="13" fill="#111111"></rect><rect x="226" y="164" width="28" height="40" rx="13" fill="#111111"></rect><path d="M106,216 L124,212 M104,226 L122,222" stroke="#2B4C8F" stroke-width="5" stroke-linecap="round"></path><path d="M294,216 L276,212 M296,226 L278,222" stroke="#2B4C8F" stroke-width="5" stroke-linecap="round"></path><path d="M112,330 C120,338 132,338 140,332" fill="none" stroke="#111111" stroke-width="7" stroke-linecap="round"></path><path d="M288,330 C280,338 268,338 260,332" fill="none" stroke="#111111" stroke-width="7" stroke-linecap="round"></path><rect x="144" y="394" width="54" height="22" rx="10" fill="#1E3560"></rect><rect x="202" y="394" width="54" height="22" rx="10" fill="#1E3560"></rect></g><g data-part="doodles" filter="url(#wbbear__UID__)" fill="none" stroke="__DOODLECOLOR__" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M34,84 C30,64 52,58 62,64 C66,46 96,46 98,64 C114,62 118,84 104,88 L40,88 Z"></path><path d="M52,100 L46,114 M78,100 L72,114"></path><path d="M320,50 L364,94 M364,94 L344,90 M364,94 L360,74"></path><path d="M340,300 L340,314 M333,314 L347,314 L347,344 L333,344 Z M340,344 L340,356"></path><path d="M364,326 L364,338 M358,338 L370,338 L370,360 L358,360 Z M364,360 L364,368"></path><path d="M38,250 L58,250"></path><path d="M42,320 L45,329 L54,332 L45,335 L42,344 L39,335 L30,332 L39,329 Z"></path></g></svg>',
+    owl: '<svg xmlns="http://www.w3.org/2000/svg" data-char="owl" viewBox="0 0 400 440" __SIZE__ role="img" aria-label="\uBD84\uC11D\uD558\uB294 \uBD80\uC5C9\uC774 \uCE90\uB9AD\uD130"><defs><filter id="fzowl__UID__" x="-12%" y="-12%" width="124%" height="124%"><feTurbulence type="turbulence" baseFrequency="0.18 0.22" numOctaves="3" seed="11" result="n"></feTurbulence><feDisplacementMap in="SourceGraphic" in2="n" scale="16" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap></filter><filter id="wbowl__UID__" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="2" seed="6" result="n"></feTurbulence><feDisplacementMap in="SourceGraphic" in2="n" scale="7"></feDisplacementMap></filter></defs><ellipse cx="200" cy="424" rx="120" ry="9" fill="#DDD5BC"></ellipse><g filter="url(#fzowl__UID__)" fill="#F2A93B"><path d="M118,132 L100,36 L180,84 Z"></path><path d="M282,132 L300,36 L220,84 Z"></path><ellipse cx="200" cy="245" rx="135" ry="158"></ellipse><ellipse cx="72" cy="262" rx="26" ry="62" transform="rotate(16 72 262)"></ellipse><ellipse cx="328" cy="262" rx="26" ry="62" transform="rotate(-16 328 262)"></ellipse></g><g filter="url(#wbowl__UID__)"><ellipse cx="200" cy="312" rx="78" ry="80" fill="#F7EFDB"></ellipse><path d="M172,298 L200,284 L228,298" fill="none" stroke="#CE7F1D" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M172,326 L200,312 L228,326" fill="none" stroke="#CE7F1D" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M176,354 L200,342 L224,354" fill="none" stroke="#CE7F1D" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="150" cy="172" r="38" fill="#FFFFFF"></circle><circle cx="250" cy="172" r="38" fill="#FFFFFF"></circle><path d="M188,166 Q200,158 212,166" fill="none" stroke="#16233F" stroke-width="6" stroke-linecap="round"></path><circle cx="152" cy="176" r="12" fill="#111111"></circle><circle cx="248" cy="176" r="12" fill="#111111"></circle><circle cx="148" cy="171" r="4" fill="#FFFFFF"></circle><circle cx="244" cy="171" r="4" fill="#FFFFFF"></circle><path d="M118,122 Q146,112 172,120" fill="none" stroke="#111111" stroke-width="8" stroke-linecap="round"></path><path d="M282,122 Q254,112 228,120" fill="none" stroke="#111111" stroke-width="8" stroke-linecap="round"></path><path d="M200,208 L180,222 Q200,244 220,222 Z" fill="#D9661E"></path><rect x="156" y="398" width="36" height="20" rx="9" fill="#D9661E"></rect><rect x="208" y="398" width="36" height="20" rx="9" fill="#D9661E"></rect></g><g data-part="doodles" filter="url(#wbowl__UID__)" fill="none" stroke="__DOODLECOLOR__" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><circle cx="58" cy="78" r="17"></circle><path d="M58,48 L58,36 M32,64 L22,56 M84,64 L94,56 M50,100 L66,100 M52,108 L64,108"></path><path d="M28,340 C48,318 58,352 82,326"></path><circle cx="86" cy="324" r="5" fill="__DOODLECOLOR__"></circle><path d="M346,60 L350,72 L362,76 L350,80 L346,92 L342,80 L330,76 L342,72 Z"></path><circle cx="348" cy="262" r="22" stroke-width="6"></circle><path d="M362,278 L382,300" stroke-width="8"></path></g></svg>'
+  };
+  var HEAD_VB = { bull: "52 16 296 296", bear: "60 30 280 280", owl: "55 58 290 272" };
+  var FACE = {
+    calm: { "bl": "M124,146 C144,136 170,144 188,160", "br": "M276,146 C256,136 230,144 212,160", "m": "" },
+    excited: { "bl": "M126,134 C146,120 168,120 186,132", "br": "M274,134 C254,120 232,120 214,132", "m": "M182,262 Q200,276 218,262" }
+  };
+  function svg(name, opts) {
+    opts = opts || {};
+    var s = ART[name];
+    if (!s) throw new Error("unknown character: " + name + " (bull | bear | owl)");
+    var u = "_sc" + ++UID;
+    s = s.split("__UID__").join(u);
+    var face = FACE[opts.mood] || FACE.calm;
+    s = s.split("__BROWL__").join(face.bl).split("__BROWR__").join(face.br).split("__MOUTH__").join(face.m);
+    if (opts.doodles === false || opts.variant === "head") {
+      var di = s.indexOf('<g data-part="doodles"');
+      if (di >= 0) {
+        var de = s.indexOf("</g>", di) + 4;
+        s = s.slice(0, di) + s.slice(de);
+      }
+    } else {
+      s = s.split("__DOODLECOLOR__").join(opts.doodleColor || "#24304A");
+    }
+    var size = opts.size || 200, w, h;
+    if (opts.variant === "head") {
+      s = s.replace(/viewBox="[^"]*"/, 'viewBox="' + HEAD_VB[name] + '"');
+      w = size;
+      h = size;
+    } else {
+      h = size;
+      w = Math.round(size * RATIO);
+    }
+    s = s.replace("__SIZE__", 'width="' + w + '" height="' + h + '"');
+    return s;
+  }
+
   // src/sidepanel/sidepanel.ts
   var FN = "https://xpjtgmckrazfbyghkeve.supabase.co/functions/v1/prices";
   var APP_URL_DEFAULT = "https://hold-web.vercel.app";
@@ -149,6 +192,7 @@
     $("symName").textContent = label;
     $("symCode").textContent = code;
     $("symPrice").textContent = "\u2026";
+    $("symPrice").classList.add("loading");
     $("symChange").textContent = "";
     try {
       const getQuote = () => fetch(`${FN}/quotes?symbols=${encodeURIComponent(code)}`).then((r) => r.json()).then((j) => j?.quotes?.[code] ?? null).catch(() => null);
@@ -181,6 +225,7 @@
         basis = "\uCD5C\uADFC \uC885\uAC00 \uAE30\uC900";
       }
       $("symBasis").textContent = basis;
+      $("symPrice").classList.remove("loading");
       if (quote) {
         $("symPrice").textContent = fmt(quote.price, quote.currency);
         const ch = quote.changePercent;
@@ -197,6 +242,7 @@
         rrSync("entry");
       } else {
         $("symPrice").textContent = "\uC2DC\uC138 \uC5C6\uC74C";
+        $("symPrice").classList.remove("loading");
       }
       levels = quote && closes.length >= 10 ? swingLevels(closes, quote.price) : [];
       renderLevels();
@@ -206,6 +252,7 @@
       void loadNews();
     } catch {
       $("symPrice").textContent = "\uC5F0\uACB0 \uC2E4\uD328";
+      $("symPrice").classList.remove("loading");
     }
   }
   function smaAt(a, n, back = 0) {
@@ -229,6 +276,11 @@
     };
   }
   var DIR_COLOR = { \uC0C1\uC2B9: "#E36A5C", \uD558\uB77D: "#7FA8E8", \uD6A1\uBCF4: "#99A1B3" };
+  var DIR_BG = {
+    \uC0C1\uC2B9: "rgba(227,106,92,0.14)",
+    \uD558\uB77D: "rgba(127,168,232,0.14)",
+    \uD6A1\uBCF4: "rgba(153,161,179,0.12)"
+  };
   function renderTrend() {
     const card = $("trendCard");
     const s = trendLine(closesG, 20, 5);
@@ -238,9 +290,9 @@
       return;
     }
     card.style.display = "block";
-    const mk = (label, t) => t ? `<span style="color:#7A8296">${label}</span> <b style="color:${DIR_COLOR[t.dir]}">${t.dir}</b> <span style="color:#99A1B3">\u2014 ${t.text}</span>` : `<span style="color:#7A8296">${label}</span> <span style="color:#5A6170">\uB370\uC774\uD130 \uBD80\uC871</span>`;
-    $("trendShort").innerHTML = mk("\uB2E8\uAE30(20\uC77C):", s);
-    $("trendLong").innerHTML = mk("\uC7A5\uAE30(60\uC77C):", l);
+    const mk = (label, t) => t ? `<span style="display:inline-block;width:58px;color:#7A8296">${label}</span><span class="chip" style="background:${DIR_BG[t.dir]};color:${DIR_COLOR[t.dir]}">${t.dir}</span><span style="color:#99A1B3;margin-left:7px;font-size:11.5px">${t.text}</span>` : `<span style="display:inline-block;width:58px;color:#7A8296">${label}</span><span style="color:#5A6170">\uB370\uC774\uD130 \uBD80\uC871</span>`;
+    $("trendShort").innerHTML = mk("\uB2E8\uAE30 20\uC77C", s);
+    $("trendLong").innerHTML = mk("\uC7A5\uAE30 60\uC77C", l);
   }
   function renderFacts() {
     const list = $("factList");
@@ -266,8 +318,8 @@
     if (avgVol > 0) facts.push(`\uCD5C\uADFC 20\uC77C \uD558\uB8E8 \uD3C9\uADE0 \uBCC0\uB3D9 \xB1${avgVol.toFixed(1)}%`);
     for (const f of facts) {
       const row = document.createElement("div");
-      row.style.cssText = "font-size:11.5px;line-height:1.55;color:#D6DAE3;padding:3px 0";
-      row.textContent = "\xB7 " + f;
+      row.style.cssText = "display:flex;gap:7px;font-size:11.5px;line-height:1.55;color:#D6DAE3;padding:3.5px 0";
+      row.innerHTML = `<span style="flex:0 0 auto;width:5px;height:5px;border-radius:99px;background:#F5B23E;margin-top:6px"></span><span>${f}</span>`;
       list.appendChild(row);
     }
   }
@@ -294,9 +346,9 @@
         a.href = it.link;
         a.target = "_blank";
         a.rel = "noreferrer";
-        a.style.cssText = "display:block;padding:7px 0;border-top:1px solid rgba(255,255,255,0.07);color:#D6DAE3;font-size:12px;line-height:1.5;text-decoration:none";
+        a.className = "newsRow";
         const meta = [it.source, timeAgo(it.pub)].filter(Boolean).join(" \xB7 ");
-        a.innerHTML = `${it.title}${meta ? `<span style="display:block;margin-top:2px;font-size:10px;color:#5A6170">${meta}</span>` : ""}`;
+        a.innerHTML = `${it.title}${meta ? `<span style="display:block;margin-top:3px;font-size:10px;color:#5A6170">${meta}</span>` : ""}`;
         list.appendChild(a);
       }
     } catch {
@@ -311,26 +363,30 @@
     }
     card.style.display = "block";
     list.innerHTML = "";
-    for (const l of [...levels].sort((a, b) => b.price - a.price)) {
+    const sorted = [...levels].sort((a, b) => b.price - a.price);
+    let currentDrawn = false;
+    for (const l of sorted) {
+      if (!currentDrawn && l.price < quote.price) {
+        list.appendChild(currentPriceRow());
+        currentDrawn = true;
+      }
+      const sup = l.kind === "support";
+      const color = sup ? "#57C7A4" : "#FF6B77";
+      const distPct = (l.price - quote.price) / quote.price * 100;
       const row = document.createElement("div");
       row.className = "row";
       row.style.padding = "5px 0";
-      const name = document.createElement("span");
-      name.textContent = l.kind === "support" ? "\uC9C0\uC9C0" : "\uC800\uD56D";
-      name.style.color = l.kind === "support" ? "#57C7A4" : "#FF6B77";
-      name.style.fontWeight = "700";
-      name.style.fontSize = "11.5px";
-      const price = document.createElement("span");
-      price.className = "mono";
-      price.textContent = fmt(l.price, quote.currency);
-      const touches = document.createElement("span");
-      touches.className = "faint";
-      touches.textContent = `${l.touches}\uBC88 \uD130\uCE58`;
-      const sp = document.createElement("span");
-      sp.style.flex = "1";
-      row.append(name, price, sp, touches);
+      row.innerHTML = `<span style="width:6px;height:6px;border-radius:99px;background:${color};flex:0 0 auto"></span><span style="color:${color};font-weight:700;font-size:11.5px;flex:0 0 26px">${sup ? "\uC9C0\uC9C0" : "\uC800\uD56D"}</span><span class="mono" style="font-weight:600">${fmt(l.price, quote.currency)}</span><span class="mono" style="font-size:10.5px;color:#7A8296">${distPct >= 0 ? "+" : ""}${distPct.toFixed(1)}%</span><span style="flex:1"></span><span class="chip" style="font-size:9.5px">${l.touches}\uBC88 \uD130\uCE58</span>`;
       list.appendChild(row);
     }
+    if (!currentDrawn) list.appendChild(currentPriceRow());
+  }
+  function currentPriceRow() {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.style.cssText = "padding:3px 0;gap:7px";
+    row.innerHTML = `<span style="flex:1;height:1px;background:rgba(245,178,62,0.4)"></span><span class="mono" style="font-size:10px;color:#F5B23E">\uD604\uC7AC ${quote ? fmt(quote.price, quote.currency) : ""}</span><span style="flex:1;height:1px;background:rgba(245,178,62,0.4)"></span>`;
+    return row;
   }
   var rrRound = (n) => quote?.currency === "USD" ? Math.round(n * 100) / 100 : Math.round(n);
   var rrLast = { stop: "pct", target: "pct" };
@@ -365,10 +421,12 @@
     const t = Number($("rrTarget").value);
     const out = $("rrOut");
     const note = $("rrNote");
+    const bar = $("rrBar");
     if (!(e > 0 && s > 0 && t > 0)) {
       out.textContent = "\uC190\uC775\uBE44 \u2014";
       out.style.color = "#F2F4F8";
       note.textContent = "";
+      bar.style.display = "none";
       return;
     }
     const reward = (t - e) / e * 100;
@@ -376,16 +434,21 @@
     if (risk <= 0 || reward <= 0) {
       out.textContent = "\uC190\uC775\uBE44 \u2014";
       note.textContent = "\uC0C1\uC2B9 \uACC4\uD68D \uAE30\uC900: \uC190\uC808\uAC00 < \uC9C4\uC785\uAC00 < \uBAA9\uD45C\uAC00";
+      bar.style.display = "none";
       return;
     }
     const rr = reward / risk;
     out.textContent = `\uC190\uC775\uBE44 1 : ${(Math.round(rr * 10) / 10).toFixed(1)}`;
     out.style.color = rr < 1 ? "#FF6B77" : "#F2F4F8";
-    note.textContent = rr < 1 ? `\uC783\uC744 \uD3ED(${risk.toFixed(1)}%)\uC774 \uBC8C \uD3ED(${reward.toFixed(1)}%)\uBCF4\uB2E4 \uCEE4\uC694` : `\uBC8C \uD3ED +${reward.toFixed(1)}% vs \uC783\uC744 \uD3ED \u2212${risk.toFixed(1)}%`;
+    bar.style.display = "flex";
+    $("rrBarRisk").style.flex = String(risk);
+    $("rrBarReward").style.flex = String(reward);
+    note.textContent = rr < 1 ? `\uC783\uC744 \uD3ED(\u2212${risk.toFixed(1)}%)\uC774 \uBC8C \uD3ED(+${reward.toFixed(1)}%)\uBCF4\uB2E4 \uCEE4\uC694` : `\uBC8C \uD3ED +${reward.toFixed(1)}% vs \uC783\uC744 \uD3ED \u2212${risk.toFixed(1)}%`;
   }
   var sess = null;
   var cash = null;
   var positions = [];
+  var posQuotes = {};
   async function loadSess() {
     try {
       const o = await chrome.storage.local.get("holdSess");
@@ -498,6 +561,19 @@
       }));
     }
     renderAuth();
+    const syms = [...new Set(positions.map((p2) => p2.symbol))].slice(0, 10);
+    if (syms.length) {
+      try {
+        const j = await fetch(`${FN}/quotes?symbols=${encodeURIComponent(syms.join(","))}`).then((r) => r.json());
+        posQuotes = {};
+        for (const s of syms) {
+          const q = j?.quotes?.[s];
+          if (q?.price > 0) posQuotes[s] = Number(q.price);
+        }
+        renderAuth();
+      } catch {
+      }
+    }
   }
   function persistCash() {
     if (sess && cash != null) {
@@ -595,35 +671,46 @@
     list.innerHTML = "";
     if (positions.length) {
       const head = document.createElement("div");
-      head.className = "faint";
-      head.textContent = `\uD488\uACE0 \uC788\uB294 \uC54C ${positions.length}\uAC1C`;
+      head.className = "row";
+      head.innerHTML = `<span class="faint">\uD488\uACE0 \uC788\uB294 \uC54C ${positions.length}\uAC1C</span>`;
+      head.style.cssText = "margin-top:2px;padding-bottom:2px;border-bottom:1px solid rgba(255,255,255,0.07)";
       list.appendChild(head);
     }
     for (const p of positions.slice(0, 8)) {
+      const cur = posQuotes[p.symbol];
+      const pnl = cur && p.entry > 0 ? (cur - p.entry) / p.entry * 100 : null;
       const row = document.createElement("div");
       row.className = "row";
-      row.style.cssText = "margin-top:6px";
+      row.style.cssText = "margin-top:7px";
       const name = document.createElement("span");
       name.textContent = p.name;
-      name.style.cssText = `font-size:12px;font-weight:600;${p.symbol === symbol ? "color:#57C7A4" : ""}`;
+      name.style.cssText = `font-size:12px;font-weight:700;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${p.symbol === symbol ? "color:#57C7A4" : ""}`;
       const info = document.createElement("span");
       info.className = "mono dim";
-      info.style.fontSize = "11px";
+      info.style.fontSize = "10.5px";
       info.textContent = `${p.qty}\uC8FC @ ${fmt(p.entry, curOf(p.symbol))}`;
       const sp = document.createElement("span");
       sp.style.flex = "1";
       const btn = document.createElement("button");
-      btn.className = "ghost";
-      btn.style.cssText = "height:26px;font-size:10.5px;padding:0 9px";
+      btn.className = "ghost mini";
       btn.textContent = "\uBAA8\uC758 \uB9E4\uB3C4";
       btn.addEventListener("click", () => void paperSell(p));
-      row.append(name, info, sp, btn);
+      row.append(name, info, sp);
+      if (pnl != null) {
+        const chip = document.createElement("span");
+        chip.className = "mono num";
+        const up = pnl >= 0;
+        chip.style.cssText = `font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 7px;color:${up ? "#E36A5C" : "#7FA8E8"};background:${up ? "rgba(227,106,92,0.13)" : "rgba(127,168,232,0.13)"}`;
+        chip.textContent = `${up ? "+" : ""}${pnl.toFixed(1)}%`;
+        row.append(chip);
+      }
+      row.append(btn);
       list.appendChild(row);
     }
     if (positions.length > 8) {
       const more = document.createElement("div");
       more.className = "faint";
-      more.style.marginTop = "6px";
+      more.style.marginTop = "7px";
       more.textContent = `\uC678 ${positions.length - 8}\uAC1C\uB294 HOLD \uC571\uC5D0\uC11C`;
       list.appendChild(more);
     }
@@ -1033,6 +1120,10 @@
     updateAppLink();
   });
   updateAppLink();
+  try {
+    $("owlSlot").innerHTML = svg("owl", { variant: "head", size: 30 });
+  } catch {
+  }
   void loadSess().then(() => {
     renderAuth();
     if (sess) void loadAccount();

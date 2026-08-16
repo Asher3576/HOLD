@@ -3,46 +3,89 @@
   <head>
     <meta charset="UTF-8" />
     <style>
+      :root {
+        --bg: #0b0e14;
+        --card: rgba(255, 255, 255, 0.045);
+        --card-line: rgba(255, 255, 255, 0.1);
+        --line-soft: rgba(255, 255, 255, 0.07);
+        --txt: #f2f4f8;
+        --sub: #d6dae3;
+        --dim: #7a8296;
+        --faint: #5a6170;
+        --green: #57c7a4;
+        --red: #ff6b77;
+        --gold: #f5b23e;
+        --up: #e36a5c;
+        --down: #7fa8e8;
+      }
       * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
       html, body { margin: 0; height: 100%; }
       body {
-        background: #0b0e14;
-        color: #f2f4f8;
+        background:
+          radial-gradient(90% 40% at 50% 0%, rgba(87, 199, 164, 0.05), transparent 60%),
+          var(--bg);
+        color: var(--txt);
         font-family: 'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
         font-size: 13px;
-        padding: 14px 14px 20px;
+        padding: 12px 12px 22px;
         overflow-y: auto;
       }
+      ::-webkit-scrollbar { width: 8px; }
+      ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 99px; }
+      ::-webkit-scrollbar-track { background: transparent; }
       button { font: inherit; color: inherit; cursor: pointer; border: none; background: none; padding: 0; }
       input { font: inherit; }
       .card {
-        background: rgba(255,255,255,0.05);
-        border: 1px solid rgba(255,255,255,0.11);
-        border-radius: 14px;
+        background: var(--card);
+        border: 1px solid var(--card-line);
+        border-radius: 15px;
         padding: 13px;
-        margin-top: 10px;
+        margin-top: 9px;
       }
-      .label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #7a8296; }
+      .label {
+        display: flex; align-items: center; gap: 6px;
+        font-size: 10px; font-weight: 700; letter-spacing: 1.4px; color: var(--dim);
+      }
+      .label::before { content: ''; width: 3px; height: 10px; border-radius: 2px; background: var(--gold); opacity: 0.85; }
+      .label.g::before { background: var(--green); }
+      .label.r::before { background: var(--red); }
+      .label.b::before { background: var(--down); }
       .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; }
+      .num { font-variant-numeric: tabular-nums; }
       .cta {
         display: block; width: 100%; height: 40px; border-radius: 11px;
         background: linear-gradient(180deg, #ff5a66, #e93d4c);
         color: #fff; font-weight: 700; font-size: 12.5px;
-        box-shadow: 0 6px 16px rgba(250, 59, 74, 0.3);
+        box-shadow: 0 6px 16px rgba(250, 59, 74, 0.28);
+        transition: filter 0.12s, transform 0.06s;
       }
+      .cta:hover { filter: brightness(1.07); }
+      .cta:active { transform: translateY(1px); }
       .ghost {
-        height: 36px; border-radius: 10px; font-weight: 700; font-size: 12px;
-        background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.18); color: #f2f4f8;
-        padding: 0 12px;
+        height: 34px; border-radius: 10px; font-weight: 700; font-size: 12px;
+        background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.16); color: var(--txt);
+        padding: 0 12px; transition: background 0.12s, border-color 0.12s;
       }
+      .ghost:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.26); }
+      .mini { height: 26px; font-size: 10.5px; padding: 0 9px; border-radius: 8px; }
       .row { display: flex; gap: 8px; align-items: center; }
       .in {
-        width: 100%; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
-        outline: none; border-radius: 10px; padding: 9px 10px; color: #f2f4f8; font-size: 12.5px;
+        width: 100%; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.11);
+        outline: none; border-radius: 10px; padding: 9px 10px; color: var(--txt); font-size: 12.5px;
+        transition: border-color 0.12s, background 0.12s;
       }
-      .dim { color: #7a8296; }
-      .faint { color: #5a6170; font-size: 10.5px; }
-      a { color: #57c7a4; text-decoration: none; }
+      .in:focus { border-color: rgba(87, 199, 164, 0.55); background: rgba(255, 255, 255, 0.08); }
+      .in::placeholder { color: var(--faint); }
+      .dim { color: var(--dim); }
+      .faint { color: var(--faint); font-size: 10.5px; }
+      .sub { color: var(--sub); }
+      a { color: var(--green); text-decoration: none; }
+      .chip {
+        display: inline-flex; align-items: center; gap: 4px;
+        border-radius: 999px; padding: 2px 8px; font-size: 10.5px; font-weight: 700;
+        background: rgba(255, 255, 255, 0.07); color: var(--dim);
+      }
+      .hr { height: 1px; background: var(--line-soft); margin: 11px 0; }
       /* 브라우저 기본 숫자 스피너 제거 — 테마에 안 맞음 */
       input[type='number']::-webkit-outer-spin-button,
       input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -50,46 +93,67 @@
       /* 커스텀 스테퍼 (− 값 +) */
       .step {
         display: flex; align-items: center; overflow: hidden;
-        background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px;
+        background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.11); border-radius: 10px;
       }
       .stepBtn {
-        flex: 0 0 27px; height: 35px; font-size: 15px; font-weight: 700; color: #99a1b3;
+        flex: 0 0 27px; height: 35px; font-size: 15px; font-weight: 700; color: var(--dim);
         display: flex; align-items: center; justify-content: center;
+        transition: background 0.12s, color 0.12s;
       }
-      .stepBtn:hover { color: #f2f4f8; background: rgba(255,255,255,0.07); }
-      .stepBtn:active { background: rgba(255,255,255,0.12); }
+      .stepBtn:hover { color: var(--txt); background: rgba(255, 255, 255, 0.07); }
+      .stepBtn:active { background: rgba(255, 255, 255, 0.12); }
       .stepIn {
         flex: 1; width: 100%; min-width: 0; background: transparent; border: none; outline: none;
-        color: #f2f4f8; text-align: center; font-size: 12.5px; padding: 0;
+        color: var(--txt); text-align: center; font-size: 12.5px; padding: 0;
         font-variant-numeric: tabular-nums;
       }
+      /* 손익비 시각 바 */
+      .rrbar { display: flex; height: 8px; border-radius: 99px; overflow: hidden; gap: 2px; }
+      .rrbar > div { border-radius: 99px; transition: flex 0.18s; }
+      /* 시세 로딩 점멸 */
+      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+      .loading { animation: pulse 1.1s ease-in-out infinite; }
+      /* 뉴스 행 */
+      .newsRow {
+        display: block; padding: 8px 6px; margin: 0 -6px; border-radius: 9px;
+        color: var(--sub); font-size: 12px; line-height: 1.5; text-decoration: none;
+        transition: background 0.12s;
+      }
+      .newsRow:hover { background: rgba(255, 255, 255, 0.05); }
+      .newsRow + .newsRow { border-top: 1px solid var(--line-soft); }
     </style>
   </head>
   <body>
-    <div class="row">
-      <span style="font-family:ui-monospace,Menlo,monospace;font-weight:800;letter-spacing:4px;font-size:13px">HOLD</span>
+    <!-- ═ 헤더 ═ -->
+    <div class="row" style="gap:9px">
+      <span id="owlSlot" style="width:30px;height:30px;display:flex;align-items:center;justify-content:center"></span>
+      <div>
+        <div style="font-family:ui-monospace,Menlo,monospace;font-weight:800;letter-spacing:4px;font-size:13.5px">HOLD</div>
+        <div class="faint" style="letter-spacing:0.2px">보고 있는 차트 위에, 계획을</div>
+      </div>
       <span style="flex:1"></span>
-      <span class="faint" style="border:1px solid rgba(255,255,255,0.12);border-radius:999px;padding:3px 9px">지시 없음 · 실거래 없음</span>
+      <span class="chip">지시 없음 · 실거래 없음</span>
     </div>
 
-    <!-- 종목 -->
-    <div class="card">
+    <!-- ═ 1. 지금 보는 종목 (현황) ═ -->
+    <div class="card" style="margin-top:12px">
       <div class="row">
         <span class="label">지금 보는 종목</span>
         <span style="flex:1"></span>
-        <button id="reDetect" class="ghost" style="height:26px;font-size:10.5px;padding:0 9px">다시 인식</button>
+        <button id="reDetect" class="ghost mini">다시 인식</button>
       </div>
-      <div id="symBox" style="margin-top:8px">
-        <div class="dim" id="symEmpty">이 페이지에서 종목을 못 찾았어 — 직접 입력해줘</div>
+      <div id="symBox" style="margin-top:10px">
+        <div id="symEmpty">
+          <div class="dim" style="font-size:12px;line-height:1.6">이 페이지에서 종목을 못 찾았어요.<br />주식 페이지를 열거나, 아래에 직접 입력해줘.</div>
+        </div>
         <div id="symInfo" style="display:none">
-          <div class="row">
-            <span id="symName" style="font-size:16px;font-weight:700"></span>
-            <span id="symCode" class="mono dim" style="font-size:11px"></span>
-            <span style="flex:1"></span>
-            <span id="symPrice" class="mono" style="font-size:15px;font-weight:700"></span>
+          <div class="row" style="gap:7px">
+            <span id="symName" style="font-size:16.5px;font-weight:800;letter-spacing:-0.2px"></span>
+            <span id="symCode" class="chip mono" style="font-size:10px;padding:1.5px 7px"></span>
           </div>
-          <div class="row" style="margin-top:3px">
-            <span id="symChange" class="mono" style="font-size:11.5px"></span>
+          <div class="row" style="margin-top:6px;align-items:baseline">
+            <span id="symPrice" class="mono" style="font-size:23px;font-weight:800;letter-spacing:-0.5px"></span>
+            <span id="symChange" class="mono" style="font-size:12px;font-weight:700"></span>
             <span style="flex:1"></span>
             <span class="faint" id="symBasis">정규장 기준 · 시간외 미반영</span>
           </div>
@@ -101,36 +165,25 @@
       </div>
     </div>
 
-    <!-- 레벨 -->
+    <!-- ═ 2. 추세 (요약 컨텍스트) ═ -->
+    <div class="card" id="trendCard" style="display:none">
+      <div class="label b">추세 — 이동평균 기준, 사실만</div>
+      <div id="trendShort" style="margin-top:9px;font-size:12.5px;line-height:1.55"></div>
+      <div id="trendLong" style="margin-top:6px;font-size:12.5px;line-height:1.55"></div>
+    </div>
+
+    <!-- ═ 3. 지지 / 저항 (핵심 행동) ═ -->
     <div class="card" id="levelCard" style="display:none">
-      <div class="label">지지 / 저항 (최근 일봉 스윙 기준)</div>
-      <div id="levelList" style="margin-top:8px"></div>
-      <button id="drawLevels" class="cta" style="margin-top:10px">차트에 레벨 긋기</button>
+      <div class="label g">지지 / 저항 — 최근 일봉 스윙 기준</div>
+      <div id="levelList" style="margin-top:9px"></div>
+      <button id="drawLevels" class="cta" style="margin-top:11px">차트에 레벨 긋기</button>
       <div class="faint" id="levelHint" style="margin-top:6px">토스증권 등은 차트 자체에 바로 그려요 · 안 되면 화면 보정 2번</div>
     </div>
 
-    <!-- 추세 -->
-    <div class="card" id="trendCard" style="display:none">
-      <div class="label">추세 (이동평균 기준 — 사실만)</div>
-      <div id="trendShort" style="margin-top:9px;font-size:12.5px;line-height:1.55"></div>
-      <div id="trendLong" style="margin-top:5px;font-size:12.5px;line-height:1.55"></div>
-    </div>
-
-    <!-- 작도 -->
+    <!-- ═ 4. 계획 세우기 (손익비 + 작도) ═ -->
     <div class="card">
-      <div class="label">작도</div>
-      <div class="row" style="margin-top:9px">
-        <button id="modeH" class="ghost" style="flex:1">─ 수평선</button>
-        <button id="modeT" class="ghost" style="flex:1">╱ 추세선</button>
-        <button id="clearAll" class="ghost">지우기</button>
-      </div>
-      <div class="faint" style="margin-top:6px">마우스로 직접 긋는 선은 화면 오버레이 · ESC로 종료</div>
-    </div>
-
-    <!-- 손익비 -->
-    <div class="card">
-      <div class="label">손익비 계산</div>
-      <div class="row" style="margin-top:9px">
+      <div class="label r">계획 세우기 — 손익비</div>
+      <div class="row" style="margin-top:10px">
         <span class="dim" style="flex:0 0 42px;font-size:11.5px">진입가</span>
         <input id="rrEntry" class="in" type="number" placeholder="현재가로 자동" />
       </div>
@@ -154,38 +207,53 @@
         </div>
         <span class="dim" style="flex:0 0 20px;font-size:11.5px">%↑</span>
       </div>
-      <div id="rrOut" class="mono" style="margin-top:10px;font-size:18px;font-weight:700">손익비 —</div>
-      <div id="rrNote" class="dim" style="font-size:11.5px;margin-top:3px"></div>
-      <button id="rrDraw" class="ghost" style="width:100%;margin-top:10px">진입·손절·목표 차트에 긋기</button>
-      <div class="faint" style="margin-top:6px">가격이나 %, 아무 쪽이나 고치면 서로 맞춰져요</div>
+      <div class="row" style="margin-top:12px;align-items:baseline">
+        <span id="rrOut" class="mono" style="font-size:19px;font-weight:800">손익비 —</span>
+        <span style="flex:1"></span>
+      </div>
+      <div id="rrBar" class="rrbar" style="margin-top:8px;display:none">
+        <div id="rrBarRisk" style="background:var(--red);flex:1"></div>
+        <div id="rrBarReward" style="background:var(--green);flex:2"></div>
+      </div>
+      <div id="rrNote" class="dim" style="font-size:11.5px;margin-top:6px"></div>
+      <button id="rrDraw" class="ghost" style="width:100%;margin-top:11px">진입·손절·목표 차트에 긋기</button>
+      <div class="hr"></div>
+      <div class="row">
+        <span class="faint" style="flex:0 0 auto">손으로 긋기</span>
+        <button id="modeH" class="ghost mini" style="flex:1">─ 수평선</button>
+        <button id="modeT" class="ghost mini" style="flex:1">╱ 추세선</button>
+        <button id="clearAll" class="ghost mini">지우기</button>
+      </div>
+      <div class="faint" style="margin-top:6px">직접 긋는 선은 화면 오버레이 · ESC로 종료 · 가격/% 어느 쪽을 고쳐도 서로 맞춰져요</div>
     </div>
 
-    <!-- HOLD 계정 · 모의 매매 -->
+    <!-- ═ 5. HOLD 계정 · 모의 매매 ═ -->
     <div class="card">
       <div class="row">
         <span class="label">HOLD 계정 · 모의 매매</span>
         <span style="flex:1"></span>
-        <span class="faint">실거래 없음 — 전부 모의</span>
+        <span class="chip" style="font-size:9.5px">전부 모의</span>
       </div>
-      <div id="authOut" style="margin-top:9px">
+      <div id="authOut" style="margin-top:10px">
         <input id="authEmail" class="in" type="email" placeholder="이메일" autocomplete="username" />
         <input id="authPw" class="in" type="password" placeholder="비밀번호" autocomplete="current-password" style="margin-top:7px" />
         <button id="authLogin" class="cta" style="margin-top:9px;height:36px">로그인</button>
         <div id="authMsg" class="faint" style="margin-top:6px">계정이 없으면 HOLD 앱에서 가입해줘 — 웹과 같은 계정으로 연동돼요</div>
       </div>
       <div id="authIn" style="display:none">
-        <div class="row" style="margin-top:2px">
+        <div class="row" style="margin-top:4px">
           <span id="authWho" class="dim" style="font-size:11.5px"></span>
           <span style="flex:1"></span>
-          <button id="authLogout" class="ghost" style="height:26px;font-size:10.5px;padding:0 9px">로그아웃</button>
+          <button id="authLogout" class="ghost mini">로그아웃</button>
         </div>
-        <div class="row" style="margin-top:9px">
+        <div class="row" style="margin-top:10px">
           <span class="dim" style="font-size:11.5px">모의 현금</span>
           <span style="flex:1"></span>
-          <span id="cashOut" class="mono" style="font-weight:700">…</span>
+          <span id="cashOut" class="mono" style="font-weight:800;font-size:14px">…</span>
         </div>
         <div id="tradeBox" style="display:none">
-          <div class="row" style="margin-top:9px">
+          <div class="hr"></div>
+          <div class="row">
             <div class="step" style="flex:0 0 104px">
               <button id="tQtyMinus" class="stepBtn">−</button>
               <input id="tQty" class="stepIn" type="number" min="1" value="10" />
@@ -193,7 +261,7 @@
             </div>
             <span class="dim" style="flex:0 0 16px;font-size:11.5px">주</span>
             <span style="flex:1"></span>
-            <span id="tCost" class="faint"></span>
+            <span id="tCost" class="faint num"></span>
           </div>
           <input id="tReason" class="in" placeholder="한 줄 이유 (선택) — 이 계획을 왜?" style="margin-top:7px" />
           <button id="tBuy" class="cta" style="margin-top:9px;height:38px">현재가로 모의 매수</button>
@@ -204,17 +272,18 @@
       </div>
     </div>
 
-    <!-- 특이사항 · 뉴스 -->
+    <!-- ═ 6. 참고 — 특이사항 · 뉴스 ═ -->
     <div class="card" id="newsCard" style="display:none">
-      <div class="label">특이사항 · 뉴스</div>
+      <div class="label">참고 — 특이사항 · 뉴스</div>
       <div id="factList" style="margin-top:8px"></div>
-      <div id="newsList" style="margin-top:4px"></div>
-      <div class="faint" style="margin-top:7px">계산된 사실과 헤드라인만 — 해석·지시 없음</div>
+      <div id="newsList" style="margin-top:6px"></div>
+      <div class="faint" style="margin-top:8px">계산된 사실과 헤드라인만 — 해석·지시 없음</div>
     </div>
 
-    <div class="faint" style="margin-top:12px;line-height:1.6">
-      사실·조건문만 — 매수/매도 지시 없음.<br />
-      계획으로 이어가려면 <a id="appLink" target="_blank">HOLD 앱에서 알 품기 →</a>
+    <!-- ═ 푸터 ═ -->
+    <div class="faint" style="margin-top:13px;line-height:1.65;text-align:center">
+      사실·조건문만 — 매수/매도 지시 없음<br />
+      <a id="appLink" target="_blank" style="font-weight:700">HOLD 앱에서 알 품기 →</a>
     </div>
     <div id="appSet" class="row" style="display:none;margin-top:8px">
       <input id="appUrlIn" class="in" placeholder="HOLD 웹 주소 (예: xxx.vercel.app)" style="flex:1" />

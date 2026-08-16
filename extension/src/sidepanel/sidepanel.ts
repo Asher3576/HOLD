@@ -4,6 +4,8 @@
  * 수치는 전부 결정적 계산. 문장은 사실·조건문만 (지시어 금지).
  */
 
+import { svg as charSvg } from '../insight/stock-characters.js'
+
 const FN = 'https://xpjtgmckrazfbyghkeve.supabase.co/functions/v1/prices'
 // HOLD 웹 배포 주소 (실제 버셀 배포) — 저장된 사용자 값이 있으면 그쪽이 우선.
 const APP_URL_DEFAULT = 'https://hold-web.vercel.app'
@@ -199,6 +201,7 @@ async function loadSymbol(code: string, label: string) {
   $('symName').textContent = label
   $('symCode').textContent = code
   $('symPrice').textContent = '…'
+  $('symPrice').classList.add('loading')
   $('symChange').textContent = ''
   try {
     const getQuote = () =>
@@ -238,6 +241,7 @@ async function loadSymbol(code: string, label: string) {
       basis = '최근 종가 기준'
     }
     $('symBasis').textContent = basis
+    $('symPrice').classList.remove('loading')
     if (quote) {
       $('symPrice').textContent = fmt(quote.price, quote.currency)
       const ch = quote.changePercent
@@ -255,6 +259,7 @@ async function loadSymbol(code: string, label: string) {
       rrSync('entry')
     } else {
       $('symPrice').textContent = '시세 없음'
+      $('symPrice').classList.remove('loading')
     }
     levels = quote && closes.length >= 10 ? swingLevels(closes, quote.price) : []
     renderLevels()
@@ -264,6 +269,7 @@ async function loadSymbol(code: string, label: string) {
     void loadNews()
   } catch {
     $('symPrice').textContent = '연결 실패'
+    $('symPrice').classList.remove('loading')
   }
 }
 
@@ -291,6 +297,11 @@ function trendLine(closes: number[], n: number, slopeBack: number): { dir: strin
 }
 
 const DIR_COLOR: Record<string, string> = { 상승: '#E36A5C', 하락: '#7FA8E8', 횡보: '#99A1B3' }
+const DIR_BG: Record<string, string> = {
+  상승: 'rgba(227,106,92,0.14)',
+  하락: 'rgba(127,168,232,0.14)',
+  횡보: 'rgba(153,161,179,0.12)',
+}
 
 function renderTrend() {
   const card = $('trendCard')
@@ -303,10 +314,12 @@ function renderTrend() {
   card.style.display = 'block'
   const mk = (label: string, t: { dir: string; text: string } | null) =>
     t
-      ? `<span style="color:#7A8296">${label}</span> <b style="color:${DIR_COLOR[t.dir]}">${t.dir}</b> <span style="color:#99A1B3">— ${t.text}</span>`
-      : `<span style="color:#7A8296">${label}</span> <span style="color:#5A6170">데이터 부족</span>`
-  $('trendShort').innerHTML = mk('단기(20일):', s)
-  $('trendLong').innerHTML = mk('장기(60일):', l)
+      ? `<span style="display:inline-block;width:58px;color:#7A8296">${label}</span>` +
+        `<span class="chip" style="background:${DIR_BG[t.dir]};color:${DIR_COLOR[t.dir]}">${t.dir}</span>` +
+        `<span style="color:#99A1B3;margin-left:7px;font-size:11.5px">${t.text}</span>`
+      : `<span style="display:inline-block;width:58px;color:#7A8296">${label}</span><span style="color:#5A6170">데이터 부족</span>`
+  $('trendShort').innerHTML = mk('단기 20일', s)
+  $('trendLong').innerHTML = mk('장기 60일', l)
 }
 
 // ─── 특이사항 (계산된 사실) ───────────────────────────────────────────────
@@ -334,8 +347,8 @@ function renderFacts() {
   if (avgVol > 0) facts.push(`최근 20일 하루 평균 변동 ±${avgVol.toFixed(1)}%`)
   for (const f of facts) {
     const row = document.createElement('div')
-    row.style.cssText = 'font-size:11.5px;line-height:1.55;color:#D6DAE3;padding:3px 0'
-    row.textContent = '· ' + f
+    row.style.cssText = 'display:flex;gap:7px;font-size:11.5px;line-height:1.55;color:#D6DAE3;padding:3.5px 0'
+    row.innerHTML = `<span style="flex:0 0 auto;width:5px;height:5px;border-radius:99px;background:#F5B23E;margin-top:6px"></span><span>${f}</span>`
     list.appendChild(row)
   }
 }
@@ -365,10 +378,9 @@ async function loadNews() {
       a.href = it.link
       a.target = '_blank'
       a.rel = 'noreferrer'
-      a.style.cssText =
-        'display:block;padding:7px 0;border-top:1px solid rgba(255,255,255,0.07);color:#D6DAE3;font-size:12px;line-height:1.5;text-decoration:none'
+      a.className = 'newsRow'
       const meta = [it.source, timeAgo(it.pub)].filter(Boolean).join(' · ')
-      a.innerHTML = `${it.title}${meta ? `<span style="display:block;margin-top:2px;font-size:10px;color:#5A6170">${meta}</span>` : ''}`
+      a.innerHTML = `${it.title}${meta ? `<span style="display:block;margin-top:3px;font-size:10px;color:#5A6170">${meta}</span>` : ''}`
       list.appendChild(a)
     }
   } catch {
@@ -385,26 +397,42 @@ function renderLevels() {
   }
   card.style.display = 'block'
   list.innerHTML = ''
-  for (const l of [...levels].sort((a, b) => b.price - a.price)) {
+  const sorted = [...levels].sort((a, b) => b.price - a.price)
+  let currentDrawn = false
+  for (const l of sorted) {
+    // 저항들 아래·지지들 위, 그 사이에 현재가 위치 표시선
+    if (!currentDrawn && l.price < quote.price) {
+      list.appendChild(currentPriceRow())
+      currentDrawn = true
+    }
+    const sup = l.kind === 'support'
+    const color = sup ? '#57C7A4' : '#FF6B77'
+    const distPct = ((l.price - quote.price) / quote.price) * 100
     const row = document.createElement('div')
     row.className = 'row'
     row.style.padding = '5px 0'
-    const name = document.createElement('span')
-    name.textContent = l.kind === 'support' ? '지지' : '저항'
-    name.style.color = l.kind === 'support' ? '#57C7A4' : '#FF6B77'
-    name.style.fontWeight = '700'
-    name.style.fontSize = '11.5px'
-    const price = document.createElement('span')
-    price.className = 'mono'
-    price.textContent = fmt(l.price, quote.currency)
-    const touches = document.createElement('span')
-    touches.className = 'faint'
-    touches.textContent = `${l.touches}번 터치`
-    const sp = document.createElement('span')
-    sp.style.flex = '1'
-    row.append(name, price, sp, touches)
+    row.innerHTML =
+      `<span style="width:6px;height:6px;border-radius:99px;background:${color};flex:0 0 auto"></span>` +
+      `<span style="color:${color};font-weight:700;font-size:11.5px;flex:0 0 26px">${sup ? '지지' : '저항'}</span>` +
+      `<span class="mono" style="font-weight:600">${fmt(l.price, quote.currency)}</span>` +
+      `<span class="mono" style="font-size:10.5px;color:#7A8296">${distPct >= 0 ? '+' : ''}${distPct.toFixed(1)}%</span>` +
+      `<span style="flex:1"></span>` +
+      `<span class="chip" style="font-size:9.5px">${l.touches}번 터치</span>`
     list.appendChild(row)
   }
+  if (!currentDrawn) list.appendChild(currentPriceRow())
+}
+
+/** 레벨 목록 사이에 끼워 넣는 "현재가" 위치 표시선 */
+function currentPriceRow(): HTMLElement {
+  const row = document.createElement('div')
+  row.className = 'row'
+  row.style.cssText = 'padding:3px 0;gap:7px'
+  row.innerHTML =
+    `<span style="flex:1;height:1px;background:rgba(245,178,62,0.4)"></span>` +
+    `<span class="mono" style="font-size:10px;color:#F5B23E">현재 ${quote ? fmt(quote.price, quote.currency) : ''}</span>` +
+    `<span style="flex:1;height:1px;background:rgba(245,178,62,0.4)"></span>`
+  return row
 }
 
 // ─── 손익비 ───────────────────────────────────────────────────────────────
@@ -446,10 +474,12 @@ function calcRR() {
   const t = Number($<HTMLInputElement>('rrTarget').value)
   const out = $('rrOut')
   const note = $('rrNote')
+  const bar = $('rrBar')
   if (!(e > 0 && s > 0 && t > 0)) {
     out.textContent = '손익비 —'
     out.style.color = '#F2F4F8'
     note.textContent = ''
+    bar.style.display = 'none'
     return
   }
   const reward = ((t - e) / e) * 100
@@ -457,14 +487,18 @@ function calcRR() {
   if (risk <= 0 || reward <= 0) {
     out.textContent = '손익비 —'
     note.textContent = '상승 계획 기준: 손절가 < 진입가 < 목표가'
+    bar.style.display = 'none'
     return
   }
   const rr = reward / risk
   out.textContent = `손익비 1 : ${(Math.round(rr * 10) / 10).toFixed(1)}`
   out.style.color = rr < 1 ? '#FF6B77' : '#F2F4F8'
+  bar.style.display = 'flex'
+  $('rrBarRisk').style.flex = String(risk)
+  $('rrBarReward').style.flex = String(reward)
   note.textContent =
     rr < 1
-      ? `잃을 폭(${risk.toFixed(1)}%)이 벌 폭(${reward.toFixed(1)}%)보다 커요`
+      ? `잃을 폭(−${risk.toFixed(1)}%)이 벌 폭(+${reward.toFixed(1)}%)보다 커요`
       : `벌 폭 +${reward.toFixed(1)}% vs 잃을 폭 −${risk.toFixed(1)}%`
 }
 
@@ -487,6 +521,8 @@ interface Pos {
   qty: number
 }
 let positions: Pos[] = []
+/** 보유 알 종목의 현재가 (배치 시세) — 행에 ±% 표시용 */
+let posQuotes: Record<string, number> = {}
 
 async function loadSess() {
   try {
@@ -614,6 +650,21 @@ async function loadAccount() {
     }))
   }
   renderAuth()
+  // 보유 종목 현재가 배치 조회 (최대 10) → 행에 ±% 표시
+  const syms = [...new Set(positions.map((p) => p.symbol))].slice(0, 10)
+  if (syms.length) {
+    try {
+      const j = await fetch(`${FN}/quotes?symbols=${encodeURIComponent(syms.join(','))}`).then((r) => r.json())
+      posQuotes = {}
+      for (const s of syms) {
+        const q = j?.quotes?.[s]
+        if (q?.price > 0) posQuotes[s] = Number(q.price)
+      }
+      renderAuth()
+    } catch {
+      /* 시세 실패는 조용히 — ±% 만 생략 */
+    }
+  }
 }
 
 function persistCash() {
@@ -719,35 +770,46 @@ function renderAuth() {
   list.innerHTML = ''
   if (positions.length) {
     const head = document.createElement('div')
-    head.className = 'faint'
-    head.textContent = `품고 있는 알 ${positions.length}개`
+    head.className = 'row'
+    head.innerHTML = `<span class="faint">품고 있는 알 ${positions.length}개</span>`
+    head.style.cssText = 'margin-top:2px;padding-bottom:2px;border-bottom:1px solid rgba(255,255,255,0.07)'
     list.appendChild(head)
   }
   for (const p of positions.slice(0, 8)) {
+    const cur = posQuotes[p.symbol]
+    const pnl = cur && p.entry > 0 ? ((cur - p.entry) / p.entry) * 100 : null
     const row = document.createElement('div')
     row.className = 'row'
-    row.style.cssText = 'margin-top:6px'
+    row.style.cssText = 'margin-top:7px'
     const name = document.createElement('span')
     name.textContent = p.name
-    name.style.cssText = `font-size:12px;font-weight:600;${p.symbol === symbol ? 'color:#57C7A4' : ''}`
+    name.style.cssText = `font-size:12px;font-weight:700;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${p.symbol === symbol ? 'color:#57C7A4' : ''}`
     const info = document.createElement('span')
     info.className = 'mono dim'
-    info.style.fontSize = '11px'
+    info.style.fontSize = '10.5px'
     info.textContent = `${p.qty}주 @ ${fmt(p.entry, curOf(p.symbol))}`
     const sp = document.createElement('span')
     sp.style.flex = '1'
     const btn = document.createElement('button')
-    btn.className = 'ghost'
-    btn.style.cssText = 'height:26px;font-size:10.5px;padding:0 9px'
+    btn.className = 'ghost mini'
     btn.textContent = '모의 매도'
     btn.addEventListener('click', () => void paperSell(p))
-    row.append(name, info, sp, btn)
+    row.append(name, info, sp)
+    if (pnl != null) {
+      const chip = document.createElement('span')
+      chip.className = 'mono num'
+      const up = pnl >= 0
+      chip.style.cssText = `font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 7px;color:${up ? '#E36A5C' : '#7FA8E8'};background:${up ? 'rgba(227,106,92,0.13)' : 'rgba(127,168,232,0.13)'}`
+      chip.textContent = `${up ? '+' : ''}${pnl.toFixed(1)}%`
+      row.append(chip)
+    }
+    row.append(btn)
     list.appendChild(row)
   }
   if (positions.length > 8) {
     const more = document.createElement('div')
     more.className = 'faint'
-    more.style.marginTop = '6px'
+    more.style.marginTop = '7px'
     more.textContent = `외 ${positions.length - 8}개는 HOLD 앱에서`
     list.appendChild(more)
   }
@@ -1230,6 +1292,13 @@ void chrome.storage.local.get('appUrl').then((o) => {
   updateAppLink()
 })
 updateAppLink()
+
+// 헤더 마스코트 — 분석 담당 부엉이 (인사이트 프렌즈, 아트 원본 무수정)
+try {
+  $('owlSlot').innerHTML = charSvg('owl', { variant: 'head', size: 30 })
+} catch {
+  /* 아트 로드 실패해도 패널은 동작 */
+}
 
 void loadSess().then(() => {
   renderAuth()
