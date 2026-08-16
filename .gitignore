@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# 확장 빌드 결과물은 커밋 — 클론만 받으면 빌드 없이 chrome://extensions 에서 바로 로드
+!extension/dist/
 coverage/
 *.local
 .DS_Store
