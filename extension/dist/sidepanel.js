@@ -30,8 +30,10 @@
         if (m) return { code: m[1].toUpperCase(), label: m[1].toUpperCase() };
       }
       if (h.endsWith("tossinvest.com")) {
-        m = u.pathname.match(/stocks\/([A-Za-z0-9]{1,12})/);
-        if (m && /^\d{6}$/.test(m[1])) return { code: m[1], label: title.split(/[:|-]/)[0].trim() || m[1] };
+        m = u.pathname.match(/stocks\/A?(\d{6})(?:[/?#]|$)/);
+        if (m) return { code: m[1], label: title.split(/[:|·-]/)[0].trim() || m[1] };
+        m = u.pathname.match(/stocks\/([A-Z]{1,6})(?:[/?#]|$)/);
+        if (m) return { code: m[1], label: m[1] };
       }
       if (!h.endsWith("stockersclub.com")) {
         m = url.match(/[^0-9a-fA-F](\d{6})(?:[^0-9a-fA-F]|$)/);
@@ -103,11 +105,16 @@
     $("symPrice").textContent = "\u2026";
     $("symChange").textContent = "";
     try {
-      const [qRes, kRes] = await Promise.all([
-        fetch(`${FN}/quotes?symbols=${encodeURIComponent(code)}`).then((r) => r.json()),
+      const getQuote = () => fetch(`${FN}/quotes?symbols=${encodeURIComponent(code)}`).then((r) => r.json()).then((j) => j?.quotes?.[code] ?? null).catch(() => null);
+      const [q0, kRes] = await Promise.all([
+        getQuote(),
         fetch(`${FN}/klines?symbol=${encodeURIComponent(code)}&limit=90`).then((r) => r.json())
       ]);
-      quote = qRes?.quotes?.[code] ?? null;
+      quote = q0;
+      if (!quote) {
+        await new Promise((r) => setTimeout(r, 1500));
+        quote = await getQuote();
+      }
       const closes = (kRes?.candles ?? []).map((c) => c.close).filter((v) => v > 0);
       if (quote) {
         $("symPrice").textContent = fmt(quote.price, quote.currency);
@@ -204,19 +211,31 @@
     } catch {
     }
   }
-  async function syncTab() {
+  var pollTimer;
+  var pollLeft = 0;
+  async function syncTab(fromPoll = false) {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id || !tab.url) return;
+    if (!fromPoll) {
+      clearTimeout(pollTimer);
+      pollLeft = 8;
+    }
     tabId = tab.id;
     let found = detectSymbol(tab.url, tab.title ?? "");
     if (!found && /^https?:/.test(tab.url)) {
       found = await detectFromPage(tab.id);
     }
     if (found && found.code !== symbol) {
+      clearTimeout(pollTimer);
       await loadSymbol(found.code, found.label);
-    } else if (!found && !symbol) {
+      return;
+    }
+    if (!found && !symbol) {
       $("symEmpty").style.display = "block";
       $("symInfo").style.display = "none";
+      if (pollLeft-- > 0) {
+        pollTimer = window.setTimeout(() => void syncTab(true), 1300);
+      }
     }
   }
   $("reDetect").addEventListener("click", () => {

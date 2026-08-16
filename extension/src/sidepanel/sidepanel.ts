@@ -52,8 +52,11 @@ function detectSymbol(url: string, title: string): { code: string; label: string
       if (m) return { code: m[1].toUpperCase(), label: m[1].toUpperCase() }
     }
     if (h.endsWith('tossinvest.com')) {
-      m = u.pathname.match(/stocks\/([A-Za-z0-9]{1,12})/)
-      if (m && /^\d{6}$/.test(m[1])) return { code: m[1], label: title.split(/[:|-]/)[0].trim() || m[1] }
+      // 토스증권 웹: /stocks/A009150/... (KR 은 A+6자리), 미국은 티커 그대로
+      m = u.pathname.match(/stocks\/A?(\d{6})(?:[/?#]|$)/)
+      if (m) return { code: m[1], label: title.split(/[:|·-]/)[0].trim() || m[1] }
+      m = u.pathname.match(/stocks\/([A-Z]{1,6})(?:[/?#]|$)/)
+      if (m) return { code: m[1], label: m[1] }
     }
     // 일반 폴백: URL 안의 6자리 코드 (uuid 라우트를 쓰는 사이트는 오탐 방지 위해 제외)
     if (!h.endsWith('stockersclub.com')) {
@@ -139,11 +142,21 @@ async function loadSymbol(code: string, label: string) {
   $('symPrice').textContent = '…'
   $('symChange').textContent = ''
   try {
-    const [qRes, kRes] = await Promise.all([
-      fetch(`${FN}/quotes?symbols=${encodeURIComponent(code)}`).then((r) => r.json()),
+    const getQuote = () =>
+      fetch(`${FN}/quotes?symbols=${encodeURIComponent(code)}`)
+        .then((r) => r.json())
+        .then((j) => (j?.quotes?.[code] ?? null) as Quote | null)
+        .catch(() => null)
+    const [q0, kRes] = await Promise.all([
+      getQuote(),
       fetch(`${FN}/klines?symbol=${encodeURIComponent(code)}&limit=90`).then((r) => r.json()),
     ])
-    quote = qRes?.quotes?.[code] ?? null
+    quote = q0
+    if (!quote) {
+      // 엣지 콜드스타트/KIS 토큰 발급 직후 순간 실패 — 1.5초 뒤 한 번 더
+      await new Promise((r) => setTimeout(r, 1500))
+      quote = await getQuote()
+    }
     const closes: number[] = (kRes?.candles ?? []).map((c: { close: number }) => c.close).filter((v: number) => v > 0)
     if (quote) {
       $('symPrice').textContent = fmt(quote.price, quote.currency)
@@ -252,19 +265,32 @@ async function send(msg: unknown) {
 }
 
 // ─── 탭 동기화 ────────────────────────────────────────────────────────────
-async function syncTab() {
+let pollTimer: number | undefined
+let pollLeft = 0
+
+async function syncTab(fromPoll = false) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
   if (!tab?.id || !tab.url) return
+  if (!fromPoll) {
+    clearTimeout(pollTimer)
+    pollLeft = 8 // SPA 렌더 대기 — 최대 ~10초 자동 재시도
+  }
   tabId = tab.id
   let found = detectSymbol(tab.url, tab.title ?? '')
   if (!found && /^https?:/.test(tab.url)) {
     found = await detectFromPage(tab.id)
   }
   if (found && found.code !== symbol) {
+    clearTimeout(pollTimer)
     await loadSymbol(found.code, found.label)
-  } else if (!found && !symbol) {
+    return
+  }
+  if (!found && !symbol) {
     $('symEmpty').style.display = 'block'
     $('symInfo').style.display = 'none'
+    if (pollLeft-- > 0) {
+      pollTimer = window.setTimeout(() => void syncTab(true), 1300)
+    }
   }
 }
 

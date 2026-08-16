@@ -42,12 +42,40 @@ if (!w.__HOLD_CS__) {
   let ctx: CanvasRenderingContext2D | null = null
   let toolbar: HTMLDivElement | null = null
   let toast: HTMLDivElement | null = null
-  let mode: 'hline' | 'trend' | null = null
+  let mode: 'hline' | 'trend' | 'region' | null = null
   let drawings: Drawing[] = []
   let calib: Calib | null = null
   let pendingLevels: { levels: LevelIn[]; currentPrice: number } | null = null
   let calibStep: 0 | 1 | 2 = 0
   let drag: { x1: number; y1: number; x2: number; y2: number } | null = null
+
+  /** 작도 대상 차트 영역 — 선·라벨이 이 사각형 안에만 그려진다 */
+  interface Rect {
+    x: number
+    y: number
+    w: number
+    h: number
+  }
+  let region: Rect | null = null
+
+  /** 페이지에서 가장 큰 캔버스/iframe(트레이딩뷰 임베드)을 차트 영역으로 추정 */
+  function autoDetectRegion() {
+    let best: Rect | null = null
+    let bestArea = 0
+    for (const el of Array.from(document.querySelectorAll('canvas, iframe'))) {
+      const r = (el as HTMLElement).getBoundingClientRect()
+      if (r.width < 300 || r.height < 180) continue
+      if (r.bottom < 0 || r.top > window.innerHeight) continue
+      const area = r.width * r.height
+      if (area > bestArea) {
+        bestArea = area
+        best = { x: r.left, y: r.top, w: r.width, h: r.height }
+      }
+    }
+    if (best) region = best
+  }
+
+  const chartRect = (): Rect => region ?? { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }
 
   // ─── 캔버스 ────────────────────────────────────────────────────────────
   function ensureCanvas(): HTMLCanvasElement {
@@ -89,19 +117,47 @@ if (!w.__HOLD_CS__) {
   function redraw() {
     if (!ctx || !canvas) return
     ctx.clearRect(0, 0, window.innerWidth, window.innerHeight)
+    const R = chartRect()
+
+    // 영역 지정/작도 중엔 대상 영역을 은은하게 표시
+    if (region && (mode || calibStep)) {
+      ctx.strokeStyle = 'rgba(245,178,62,0.35)'
+      ctx.lineWidth = 1
+      ctx.setLineDash([5, 5])
+      ctx.strokeRect(R.x, R.y, R.w, R.h)
+    }
+
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(R.x, R.y, R.w, R.h)
+    ctx.clip()
     for (const d of drawings) {
       if (d.type === 'h') {
-        line(0, d.y, window.innerWidth, d.y, '#F5B23E', 2, [])
-        tag(`${Math.round(d.y)}`, window.innerWidth - 8, d.y, '#F5B23E', true)
+        line(R.x, d.y, R.x + R.w, d.y, '#F5B23E', 2, [])
       } else if (d.type === 't') {
         line(d.x1, d.y1, d.x2, d.y2, '#F5B23E', 2, [])
       } else {
         const dash = d.kind === 'entry' ? [] : [7, 5]
-        line(0, d.y, window.innerWidth, d.y, COLOR[d.kind], 1.8, dash)
-        tag(d.label, window.innerWidth - 8, d.y, COLOR[d.kind], true)
+        line(R.x, d.y, R.x + R.w, d.y, COLOR[d.kind], 1.8, dash)
       }
     }
-    if (drag) line(drag.x1, drag.y1, drag.x2, drag.y2, 'rgba(245,178,62,0.7)', 2, [4, 4])
+    ctx.restore()
+    // 라벨은 클립 밖에서 (영역 우측 끝 기준)
+    for (const d of drawings) {
+      if (d.type === 'level') tag(d.label, R.x + R.w - 8, d.y, COLOR[d.kind], true)
+      else if (d.type === 'h') tag(`${Math.round(d.y)}`, R.x + R.w - 8, d.y, '#F5B23E', true)
+    }
+
+    if (drag) {
+      if (mode === 'region') {
+        ctx.strokeStyle = 'rgba(245,178,62,0.8)'
+        ctx.lineWidth = 1.5
+        ctx.setLineDash([6, 4])
+        ctx.strokeRect(Math.min(drag.x1, drag.x2), Math.min(drag.y1, drag.y2), Math.abs(drag.x2 - drag.x1), Math.abs(drag.y2 - drag.y1))
+      } else {
+        line(drag.x1, drag.y1, drag.x2, drag.y2, 'rgba(245,178,62,0.7)', 2, [4, 4])
+      }
+    }
   }
 
   function line(x1: number, y1: number, x2: number, y2: number, color: string, width: number, dash: number[]) {
@@ -162,6 +218,7 @@ if (!w.__HOLD_CS__) {
     }
     mk('─ 수평선', () => setMode(mode === 'hline' ? null : 'hline'))
     mk('╱ 추세선', () => setMode(mode === 'trend' ? null : 'trend'))
+    mk('▣ 영역', () => setMode(mode === 'region' ? null : 'region'))
     mk('지우기', () => {
       drawings = []
       calib = null
@@ -202,11 +259,14 @@ if (!w.__HOLD_CS__) {
 
   function setMode(m: typeof mode) {
     mode = m
+    if ((m === 'hline' || m === 'trend') && !region) autoDetectRegion()
     ensureCanvas().style.pointerEvents = m || calibStep ? 'auto' : 'none'
     ensureToolbar()
-    if (m === 'hline') showToast('수평선 모드 — 원하는 위치를 클릭 (ESC 종료)', true)
+    if (m === 'hline') showToast('수평선 모드 — 차트 위 원하는 위치를 클릭 (ESC 종료)', true)
     else if (m === 'trend') showToast('추세선 모드 — 드래그해서 긋기 (ESC 종료)', true)
+    else if (m === 'region') showToast('차트 영역 지정 — 차트를 감싸게 드래그해줘', true)
     else if (toast) toast.style.display = 'none'
+    redraw()
   }
 
   // ─── 캘리브레이션 (2점) ────────────────────────────────────────────────
@@ -292,9 +352,10 @@ if (!w.__HOLD_CS__) {
 
   function renderLevels(levels: LevelIn[]) {
     drawings = drawings.filter((d) => d.type !== 'level')
+    const R = chartRect()
     for (const l of levels) {
       const y = priceToY(l.price)
-      if (y == null || y < 0 || y > window.innerHeight) continue
+      if (y == null || y < R.y || y > R.y + R.h) continue
       drawings.push({ type: 'level', y, price: l.price, label: l.label, kind: l.kind })
     }
     redraw()
@@ -320,7 +381,7 @@ if (!w.__HOLD_CS__) {
     if (mode === 'hline') {
       drawings.push({ type: 'h', y: e.clientY })
       redraw()
-    } else if (mode === 'trend') {
+    } else if (mode === 'trend' || mode === 'region') {
       drag = { x1: e.clientX, y1: e.clientY, x2: e.clientX, y2: e.clientY }
     }
   }
@@ -335,11 +396,22 @@ if (!w.__HOLD_CS__) {
   }
 
   function onUp() {
-    if (drag) {
-      drawings.push({ type: 't', ...drag })
+    if (!drag) return
+    if (mode === 'region') {
+      const w2 = Math.abs(drag.x2 - drag.x1)
+      const h2 = Math.abs(drag.y2 - drag.y1)
+      if (w2 > 80 && h2 > 60) {
+        region = { x: Math.min(drag.x1, drag.x2), y: Math.min(drag.y1, drag.y2), w: w2, h: h2 }
+        showToast('차트 영역을 지정했어 — 이제 선이 이 안에만 그려져')
+      }
       drag = null
+      setMode(null)
       redraw()
+      return
     }
+    drawings.push({ type: 't', ...drag })
+    drag = null
+    redraw()
   }
 
   // ─── 메시지 ────────────────────────────────────────────────────────────
@@ -358,6 +430,7 @@ if (!w.__HOLD_CS__) {
       sendResponse({ ok: true })
     } else if (msg?.type === 'HOLD_DRAW_LEVELS') {
       const { levels, currentPrice } = msg as { levels: LevelIn[]; currentPrice: number }
+      if (!region) autoDetectRegion()
       if (!calib) {
         pendingLevels = { levels, currentPrice }
         pendingP1 = currentPrice

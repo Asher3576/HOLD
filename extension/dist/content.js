@@ -3,7 +3,21 @@
   // src/content/index.ts
   var w = window;
   if (!w.__HOLD_CS__) {
-    let ensureCanvas = function() {
+    let autoDetectRegion = function() {
+      let best = null;
+      let bestArea = 0;
+      for (const el of Array.from(document.querySelectorAll("canvas, iframe"))) {
+        const r = el.getBoundingClientRect();
+        if (r.width < 300 || r.height < 180) continue;
+        if (r.bottom < 0 || r.top > window.innerHeight) continue;
+        const area = r.width * r.height;
+        if (area > bestArea) {
+          bestArea = area;
+          best = { x: r.left, y: r.top, w: r.width, h: r.height };
+        }
+      }
+      if (best) region = best;
+    }, ensureCanvas = function() {
       if (canvas) return canvas;
       canvas = document.createElement("canvas");
       Object.assign(canvas.style, {
@@ -38,19 +52,42 @@
     }, redraw = function() {
       if (!ctx || !canvas) return;
       ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      const R = chartRect();
+      if (region && (mode || calibStep)) {
+        ctx.strokeStyle = "rgba(245,178,62,0.35)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([5, 5]);
+        ctx.strokeRect(R.x, R.y, R.w, R.h);
+      }
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(R.x, R.y, R.w, R.h);
+      ctx.clip();
       for (const d of drawings) {
         if (d.type === "h") {
-          line(0, d.y, window.innerWidth, d.y, "#F5B23E", 2, []);
-          tag(`${Math.round(d.y)}`, window.innerWidth - 8, d.y, "#F5B23E", true);
+          line(R.x, d.y, R.x + R.w, d.y, "#F5B23E", 2, []);
         } else if (d.type === "t") {
           line(d.x1, d.y1, d.x2, d.y2, "#F5B23E", 2, []);
         } else {
           const dash = d.kind === "entry" ? [] : [7, 5];
-          line(0, d.y, window.innerWidth, d.y, COLOR[d.kind], 1.8, dash);
-          tag(d.label, window.innerWidth - 8, d.y, COLOR[d.kind], true);
+          line(R.x, d.y, R.x + R.w, d.y, COLOR[d.kind], 1.8, dash);
         }
       }
-      if (drag) line(drag.x1, drag.y1, drag.x2, drag.y2, "rgba(245,178,62,0.7)", 2, [4, 4]);
+      ctx.restore();
+      for (const d of drawings) {
+        if (d.type === "level") tag(d.label, R.x + R.w - 8, d.y, COLOR[d.kind], true);
+        else if (d.type === "h") tag(`${Math.round(d.y)}`, R.x + R.w - 8, d.y, "#F5B23E", true);
+      }
+      if (drag) {
+        if (mode === "region") {
+          ctx.strokeStyle = "rgba(245,178,62,0.8)";
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([6, 4]);
+          ctx.strokeRect(Math.min(drag.x1, drag.x2), Math.min(drag.y1, drag.y2), Math.abs(drag.x2 - drag.x1), Math.abs(drag.y2 - drag.y1));
+        } else {
+          line(drag.x1, drag.y1, drag.x2, drag.y2, "rgba(245,178,62,0.7)", 2, [4, 4]);
+        }
+      }
     }, line = function(x1, y1, x2, y2, color, width, dash) {
       if (!ctx) return;
       ctx.strokeStyle = color;
@@ -104,6 +141,7 @@
       };
       mk("\u2500 \uC218\uD3C9\uC120", () => setMode(mode === "hline" ? null : "hline"));
       mk("\u2571 \uCD94\uC138\uC120", () => setMode(mode === "trend" ? null : "trend"));
+      mk("\u25A3 \uC601\uC5ED", () => setMode(mode === "region" ? null : "region"));
       mk("\uC9C0\uC6B0\uAE30", () => {
         drawings = [];
         calib = null;
@@ -140,11 +178,14 @@
       if (!sticky) setTimeout(() => toast && (toast.style.display = "none"), 3200);
     }, setMode = function(m) {
       mode = m;
+      if ((m === "hline" || m === "trend") && !region) autoDetectRegion();
       ensureCanvas().style.pointerEvents = m || calibStep ? "auto" : "none";
       ensureToolbar();
-      if (m === "hline") showToast("\uC218\uD3C9\uC120 \uBAA8\uB4DC \u2014 \uC6D0\uD558\uB294 \uC704\uCE58\uB97C \uD074\uB9AD (ESC \uC885\uB8CC)", true);
+      if (m === "hline") showToast("\uC218\uD3C9\uC120 \uBAA8\uB4DC \u2014 \uCC28\uD2B8 \uC704 \uC6D0\uD558\uB294 \uC704\uCE58\uB97C \uD074\uB9AD (ESC \uC885\uB8CC)", true);
       else if (m === "trend") showToast("\uCD94\uC138\uC120 \uBAA8\uB4DC \u2014 \uB4DC\uB798\uADF8\uD574\uC11C \uAE0B\uAE30 (ESC \uC885\uB8CC)", true);
+      else if (m === "region") showToast("\uCC28\uD2B8 \uC601\uC5ED \uC9C0\uC815 \u2014 \uCC28\uD2B8\uB97C \uAC10\uC2F8\uAC8C \uB4DC\uB798\uADF8\uD574\uC918", true);
       else if (toast) toast.style.display = "none";
+      redraw();
     }, startCalibration = function(currentPrice) {
       calibStep = 1;
       ensureCanvas().style.pointerEvents = "auto";
@@ -220,9 +261,10 @@
       return calib.y1 + (price - calib.p1) * (calib.y2 - calib.y1) / (calib.p2 - calib.p1);
     }, renderLevels = function(levels) {
       drawings = drawings.filter((d) => d.type !== "level");
+      const R = chartRect();
       for (const l of levels) {
         const y = priceToY(l.price);
-        if (y == null || y < 0 || y > window.innerHeight) continue;
+        if (y == null || y < R.y || y > R.y + R.h) continue;
         drawings.push({ type: "level", y, price: l.price, label: l.label, kind: l.kind });
       }
       redraw();
@@ -243,7 +285,7 @@
       if (mode === "hline") {
         drawings.push({ type: "h", y: e.clientY });
         redraw();
-      } else if (mode === "trend") {
+      } else if (mode === "trend" || mode === "region") {
         drag = { x1: e.clientX, y1: e.clientY, x2: e.clientX, y2: e.clientY };
       }
     }, onMove = function(e) {
@@ -253,13 +295,24 @@
         redraw();
       }
     }, onUp = function() {
-      if (drag) {
-        drawings.push({ type: "t", ...drag });
+      if (!drag) return;
+      if (mode === "region") {
+        const w2 = Math.abs(drag.x2 - drag.x1);
+        const h2 = Math.abs(drag.y2 - drag.y1);
+        if (w2 > 80 && h2 > 60) {
+          region = { x: Math.min(drag.x1, drag.x2), y: Math.min(drag.y1, drag.y2), w: w2, h: h2 };
+          showToast("\uCC28\uD2B8 \uC601\uC5ED\uC744 \uC9C0\uC815\uD588\uC5B4 \u2014 \uC774\uC81C \uC120\uC774 \uC774 \uC548\uC5D0\uB9CC \uADF8\uB824\uC838");
+        }
         drag = null;
+        setMode(null);
         redraw();
+        return;
       }
+      drawings.push({ type: "t", ...drag });
+      drag = null;
+      redraw();
     };
-    ensureCanvas2 = ensureCanvas, resize2 = resize, redraw2 = redraw, line2 = line, tag2 = tag, ensureToolbar2 = ensureToolbar, showToast2 = showToast, setMode2 = setMode, startCalibration2 = startCalibration, askSecondPrice2 = askSecondPrice, priceToY2 = priceToY, renderLevels2 = renderLevels, fmt2 = fmt, onDown2 = onDown, onMove2 = onMove, onUp2 = onUp;
+    autoDetectRegion2 = autoDetectRegion, ensureCanvas2 = ensureCanvas, resize2 = resize, redraw2 = redraw, line2 = line, tag2 = tag, ensureToolbar2 = ensureToolbar, showToast2 = showToast, setMode2 = setMode, startCalibration2 = startCalibration, askSecondPrice2 = askSecondPrice, priceToY2 = priceToY, renderLevels2 = renderLevels, fmt2 = fmt, onDown2 = onDown, onMove2 = onMove, onUp2 = onUp;
     w.__HOLD_CS__ = true;
     const Z = "2147483640";
     const COLOR = {
@@ -279,6 +332,8 @@
     let pendingLevels = null;
     let calibStep = 0;
     let drag = null;
+    let region = null;
+    const chartRect = () => region ?? { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight };
     let pendingY2 = 0;
     let pendingP1 = 0;
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -296,6 +351,7 @@
         sendResponse({ ok: true });
       } else if (msg?.type === "HOLD_DRAW_LEVELS") {
         const { levels, currentPrice } = msg;
+        if (!region) autoDetectRegion();
         if (!calib) {
           pendingLevels = { levels, currentPrice };
           pendingP1 = currentPrice;
@@ -308,6 +364,7 @@
       return void 0;
     });
   }
+  var autoDetectRegion2;
   var ensureCanvas2;
   var resize2;
   var redraw2;
