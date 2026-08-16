@@ -1,20 +1,28 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Mascot from './insight/Mascot'
 import { ghostBtn, redCta } from '../ui'
 
 /** 로그인/회원가입 — 폰 셸 안에 표시. 게스트(목데이터 데모) 입장도 제공. */
 export default function LoginScreen({
   busy,
+  note,
   onSignIn,
   onSignUp,
   onGuest,
 }: {
   busy: boolean
+  /** 인증 상태/에러 안내 — 화면에 고정 표시 (토스트와 달리 사라지지 않음) */
+  note?: string | null
   onSignIn: (email: string, pw: string) => void
   onSignUp: (email: string, pw: string) => void
   onGuest: () => void
 }) {
   const [mode, setMode] = useState<'in' | 'up'>('in')
+
+  // "이미 가입된 이메일" 안내가 오면 로그인 모드로 자동 전환
+  useEffect(() => {
+    if (note?.includes('이미 가입된')) setMode('in')
+  }, [note])
   const [email, setEmail] = useState('')
   const [pw, setPw] = useState('')
   const canSubmit = email.includes('@') && pw.length >= 6 && !busy
@@ -86,6 +94,22 @@ export default function LoginScreen({
         >
           {busy ? '잠시만…' : mode === 'in' ? '로그인' : '회원가입'}
         </button>
+        {note && (
+          <div
+            style={{
+              fontSize: 12.5,
+              lineHeight: 1.6,
+              color: '#F5B23E',
+              textAlign: 'center',
+              padding: '4px 6px',
+              background: 'rgba(245,178,62,0.08)',
+              border: '1px solid rgba(245,178,62,0.25)',
+              borderRadius: 10,
+            }}
+          >
+            {note}
+          </div>
+        )}
         <button
           onClick={() => setMode(mode === 'in' ? 'up' : 'in')}
           style={{ fontSize: 12.5, color: '#99A1B3', padding: 6 }}

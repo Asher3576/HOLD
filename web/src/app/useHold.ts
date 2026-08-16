@@ -65,6 +65,8 @@ export interface HoldState {
   userEmail: string | null
   guest: boolean
   authBusy: boolean
+  /** 로그인 화면에 고정 표시되는 상태/에러 메시지 (토스트와 달리 사라지지 않음) */
+  authNote: string | null
 }
 
 const initial: HoldState = {
@@ -113,6 +115,7 @@ const initial: HoldState = {
   userEmail: null,
   guest: false,
   authBusy: false,
+  authNote: null,
 }
 
 type Patch = Partial<HoldState> | ((s: HoldState) => Partial<HoldState>)
@@ -210,29 +213,51 @@ export function useHold() {
     })
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
       const u = session?.user
-      set({ userId: u?.id ?? null, userEmail: u?.email ?? null, guest: false })
+      set((prev) => ({
+        userId: u?.id ?? null,
+        userEmail: u?.email ?? null,
+        guest: false,
+        authNote: u ? null : prev.authNote,
+      }))
     })
     return () => sub.subscription.unsubscribe()
   }, [])
 
+  /** Supabase 인증 에러를 한국어 안내로 */
+  const friendlyAuthErr = (msg: string): string => {
+    const m = msg.toLowerCase()
+    if (m.includes('already registered') || m.includes('already_exists')) return '이미 가입된 이메일이에요 — 아래에서 로그인으로 진행해줘'
+    if (m.includes('at least 6')) return '비밀번호는 6자 이상이어야 해요'
+    if (m.includes('invalid login credentials')) return '이메일 또는 비밀번호가 달라요'
+    if (m.includes('not confirmed')) return '이메일 인증이 아직 안 됐어요 — 메일함(스팸함 포함)을 확인해줘'
+    if (m.includes('rate limit')) return '요청이 너무 잦아요 — 잠시 후 다시 시도해줘'
+    if (m.includes('invalid') && m.includes('email')) return '이메일 형식을 확인해줘'
+    return `실패했어요 — ${msg}`
+  }
+
   const signIn = async (email: string, pw: string) => {
     if (!supabase) return
-    set({ authBusy: true })
+    set({ authBusy: true, authNote: null })
     const { error } = await supabase.auth.signInWithPassword({ email, password: pw })
     set({ authBusy: false })
-    if (error) showToast(`로그인 실패 — ${error.message}`)
+    if (error) set({ authNote: friendlyAuthErr(error.message) })
   }
 
   const signUp = async (email: string, pw: string) => {
     if (!supabase) return
-    set({ authBusy: true })
+    set({ authBusy: true, authNote: null })
     const { data, error } = await supabase.auth.signUp({ email, password: pw })
     set({ authBusy: false })
     if (error) {
-      showToast(`가입 실패 — ${error.message}`)
+      set({ authNote: friendlyAuthErr(error.message) })
     } else if (!data.session) {
-      showToast('확인 메일을 보냈어요 — 메일함에서 인증 후 로그인해주세요.')
+      // 이메일 인증이 켜져 있는 프로젝트 — 세션 없이 가입만 된 상태
+      set({
+        authNote:
+          '확인 메일을 보냈어요 — 메일함(스팸함 포함)에서 인증 후 로그인해줘. 몇 분이 지나도 안 오면 다시 시도해줘.',
+      })
     }
+    // 세션이 바로 오면(이메일 인증 꺼짐) onAuthStateChange 가 자동으로 로그인 처리
   }
 
   const signOut = async () => {

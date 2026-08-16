@@ -115,7 +115,7 @@ export default function App() {
         )}
 
         {mode === 'signedOut' && (
-          <LoginScreen busy={s.authBusy} onSignIn={a.signIn} onSignUp={a.signUp} onGuest={a.enterGuest} />
+          <LoginScreen busy={s.authBusy} note={s.authNote} onSignIn={a.signIn} onSignUp={a.signUp} onGuest={a.enterGuest} />
         )}
 
         {(mode === 'guest' || mode === 'real') && (
