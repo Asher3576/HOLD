@@ -27,10 +27,52 @@ function json(body: unknown, status?: number, sMaxAge?: number) {
   return new Response(JSON.stringify(body), { status: status || 200, headers })
 }
 
-// ─── 토큰 (24h 유효 — 유효기간 내 재호출 시 동일 토큰이라 인스턴스 캐시로 충분) ──
+// ─── 토큰 (24h 유효) ────────────────────────────────────────────────────────
+// 엣지 인스턴스는 여러 개가 뜨고 콜드스타트마다 메모리가 초기화되므로,
+// 메모리 캐시만 쓰면 인스턴스가 뜰 때마다 재발급하게 된다 (KIS 발급 알림 폭탄).
+// → 발급된 토큰을 DB(app_cache, service role 전용)에 공유 저장해 24시간 1회만 발급.
 let tokenCache = { token: '', expiresAt: 0 }
 
-async function issueToken(): Promise<string | null> {
+const SB_URL = Deno.env.get('SUPABASE_URL') ?? ''
+const SB_SVC = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+const TOKEN_KEY = 'kis:token'
+
+async function dbLoadToken(): Promise<{ token: string; expiresAt: number } | null> {
+  if (!SB_URL || !SB_SVC) return null
+  try {
+    const res = await fetch(
+      `${SB_URL}/rest/v1/app_cache?key=eq.${encodeURIComponent(TOKEN_KEY)}&select=value`,
+      { headers: { apikey: SB_SVC, Authorization: `Bearer ${SB_SVC}` }, signal: AbortSignal.timeout(5_000) },
+    )
+    const rows = await res.json().catch(() => null)
+    const v = rows?.[0]?.value
+    if (v?.token && typeof v.expiresAt === 'number') return v
+  } catch {
+    /* 캐시 실패는 발급으로 폴백 */
+  }
+  return null
+}
+
+async function dbSaveToken(v: { token: string; expiresAt: number }): Promise<void> {
+  if (!SB_URL || !SB_SVC) return
+  try {
+    await fetch(`${SB_URL}/rest/v1/app_cache`, {
+      method: 'POST',
+      headers: {
+        apikey: SB_SVC,
+        Authorization: `Bearer ${SB_SVC}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify({ key: TOKEN_KEY, value: v, updated_at: new Date().toISOString() }),
+      signal: AbortSignal.timeout(5_000),
+    })
+  } catch {
+    /* 저장 실패해도 동작엔 지장 없음 */
+  }
+}
+
+async function issueToken(): Promise<{ token: string; expiresAt: number } | null> {
   const res = await fetch(BASE + '/oauth2/tokenP', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -38,22 +80,33 @@ async function issueToken(): Promise<string | null> {
     signal: AbortSignal.timeout(10_000),
   })
   const data = await res.json().catch(() => null)
-  return data?.access_token ?? null
+  if (!data?.access_token) return null
+  const expiresIn = Number(data.expires_in) || 86_400
+  return { token: data.access_token, expiresAt: Date.now() + expiresIn * 1000 }
 }
 
-async function getToken(): Promise<string | null> {
+const fresh = (t: { token: string; expiresAt: number }) => t.token && t.expiresAt - 600_000 > Date.now()
+
+async function getToken(force = false): Promise<string | null> {
   if (!APP_KEY || !APP_SECRET) return null
-  const now = Date.now()
-  if (tokenCache.token && tokenCache.expiresAt - 120_000 > now) return tokenCache.token
-  let token = await issueToken()
-  if (!token) {
+  if (!force) {
+    if (fresh(tokenCache)) return tokenCache.token
+    const db = await dbLoadToken()
+    if (db && fresh(db)) {
+      tokenCache = db
+      return db.token
+    }
+  }
+  let issued = await issueToken()
+  if (!issued) {
     // 발급 빈도 제한(분당 1회)·순간 오류 — 잠시 후 1회 재시도
     await new Promise((r) => setTimeout(r, 1200))
-    token = await issueToken()
+    issued = await issueToken()
   }
-  if (!token) return null
-  tokenCache = { token, expiresAt: now + 86_400 * 1000 }
-  return token
+  if (!issued) return null
+  tokenCache = issued
+  await dbSaveToken(issued)
+  return issued.token
 }
 
 async function kisGet(path: string, trId: string, query: Record<string, string>) {
@@ -75,8 +128,9 @@ async function kisGet(path: string, trId: string, query: Record<string, string>)
     })
   let res = await call(token)
   if (res.status === 401) {
+    // 저장된 토큰이 무효 — 강제 재발급 (DB 캐시 무시)
     tokenCache = { token: '', expiresAt: 0 }
-    token = await getToken()
+    token = await getToken(true)
     if (token) res = await call(token)
   }
   const data = await res.json().catch(() => ({}))
