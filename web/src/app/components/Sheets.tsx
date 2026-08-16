@@ -50,7 +50,7 @@ export default function Sheets({
         {s.sheet === 'detail' && <DetailSheet s={s} a={a} />}
         {s.sheet === 'sell' && <SellSheet s={s} a={a} isReal={isReal} />}
         {s.sheet === 'plan' && <PlanSheet s={s} a={a} execPrice={execPrice} />}
-        {s.sheet === 'review' && <ReviewSheet s={s} a={a} />}
+        {s.sheet === 'review' && <ReviewSheet s={s} a={a} isReal={isReal} />}
       </div>
     </div>
   )
@@ -631,8 +631,12 @@ const aiBox: React.CSSProperties = {
 }
 
 // ─── 홀디랑 복기 ────────────────────────────────────────────────────────────
-function ReviewSheet({ s, a }: { s: HoldState; a: HoldActions }) {
+function ReviewSheet({ s, a, isReal }: { s: HoldState; a: HoldActions; isReal: boolean }) {
   const t = reviewTags(s.rvA1, s.rvA2)
+  // real: AI 대사(로드 전엔 결정적 문구) / 게스트: 데모 대사
+  const q0 = s.rvQ0 ?? (isReal ? '오늘 하루를 돌아보자 — 팔고 싶거나 사고 싶었던 순간, 그때 무슨 생각이었어?' : '오늘 SK하이닉스 알을 18일 일찍 꺼냈네. 그때 무슨 생각이었어?')
+  const q1 = s.rvQ1 ?? (isReal ? '처음 세운 이유에는 변화가 있었어?' : '매수 이유(HBM 수요)에는 변화가 있었어?')
+  const fin = s.rvFin ?? t.rvFinal
   const holdieBubble = (text: string) => (
     <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
       <div style={{ flex: 'none', marginTop: 2 }}>
@@ -690,17 +694,17 @@ function ReviewSheet({ s, a }: { s: HoldState; a: HoldActions }) {
     <div>
       <div style={{ fontSize: 16, fontWeight: 700 }}>부엉이랑 3분 복기</div>
       <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {holdieBubble('오늘 SK하이닉스 알을 18일 일찍 꺼냈네. 그때 무슨 생각이었어?')}
+        {holdieBubble(q0)}
         {s.rvStep >= 1 && (
           <>
             {meBubble(s.rvA1 ?? '')}
-            {holdieBubble('매수 이유(HBM 수요)에는 변화가 있었어?')}
+            {holdieBubble(q1)}
           </>
         )}
         {s.rvStep >= 2 && (
           <>
             {meBubble(s.rvA2 ?? '')}
-            {holdieBubble(t.rvFinal)}
+            {holdieBubble(fin)}
           </>
         )}
       </div>

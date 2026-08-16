@@ -8,7 +8,7 @@ import type { Egg, Fruit, PlanMode, SheetKind, VaultPhase } from './model'
 import { codeFor, DIAL_BASE, DIAL_STEP, SEED_CASH, SELL_COUNTDOWN } from './model'
 import { baseFruits, initialEggs, initialHatchedMap } from './mock/design'
 import { ENTRY } from './mock/prices'
-import { fetchBrief, fetchQuotes, type Brief, type Quote } from './lib/api'
+import { fetchBrief, fetchQuotes, fetchReviewLine, type Brief, type Quote } from './lib/api'
 import { supabase } from './lib/supabase'
 import * as db from './lib/db'
 import { reviewTags } from './review'
@@ -54,6 +54,10 @@ export interface HoldState {
   rvStep: number
   rvA1: string | null
   rvA2: string | null
+  /** AI 복기 대사 (real 모드) — null 이면 결정적/데모 대사 */
+  rvQ0: string | null
+  rvQ1: string | null
+  rvFin: string | null
   extStep: number
   hEntry: number
   hStop: number
@@ -107,6 +111,9 @@ const initial: HoldState = {
   rvStep: 0,
   rvA1: null,
   rvA2: null,
+  rvQ0: null,
+  rvQ1: null,
+  rvFin: null,
   extStep: 0,
   hEntry: 235.6,
   hStop: 228.0,
@@ -397,13 +404,24 @@ export function useHold() {
       pAi: null,
       surf: 'web',
     })
-  const openReview = () =>
+  const openReview = () => {
     set((st) => ({
       sheet: 'review',
       rvStep: st.rvA2 ? 2 : 0,
       rvA1: st.rvA2 ? st.rvA1 : null,
       rvA2: st.rvA2 ?? null,
     }))
+    // real 모드: 최근 기록 기반 AI 대사 로드 (실패 시 결정적 대사)
+    const st = sRef.current
+    if (isReal && st.userId && !st.rvA2) {
+      set({ rvQ0: null, rvQ1: null, rvFin: null })
+      void (async () => {
+        rvCtx.current = await db.fetchLastEnded(st.userId!)
+        const line = await fetchReviewLine(0, rvCtx.current, [])
+        if (line) set({ rvQ0: line })
+      })()
+    }
+  }
   const closeSheet = () => {
     clearInterval(cdI.current)
     set({ sheet: null, changing: false, cd: null })
@@ -631,9 +649,22 @@ export function useHold() {
   }
 
   // ─── 복기 ──────────────────────────────────────────────────────────────
-  const rvPick1 = (label: string) => set({ rvA1: label, rvStep: 1 })
+  const rvCtx = useRef<Awaited<ReturnType<typeof db.fetchLastEnded>>>(null)
+  const rvPick1 = (label: string) => {
+    set({ rvA1: label, rvStep: 1 })
+    if (isReal && sRef.current.userId) {
+      void fetchReviewLine(1, rvCtx.current, [label]).then((line) => {
+        if (line) set({ rvQ1: line })
+      })
+    }
+  }
   const rvPick2 = (label: string) => {
     set({ rvA2: label, rvStep: 2 })
+    if (isReal && sRef.current.userId) {
+      void fetchReviewLine(2, rvCtx.current, [sRef.current.rvA1 ?? '', label]).then((line) => {
+        if (line) set({ rvFin: line })
+      })
+    }
     const st = sRef.current
     if (isReal && st.userId) {
       // 복기 카드 저장 — 가장 최근 real 알에 연결 (없으면 저장 생략)

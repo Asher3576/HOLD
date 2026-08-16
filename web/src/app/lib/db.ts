@@ -286,6 +286,43 @@ export async function insertReview(
   }
 }
 
+/** 가장 최근에 끝난 계획 — AI 복기의 대화 컨텍스트용 */
+export async function fetchLastEnded(uid: string): Promise<{
+  name: string
+  status: string
+  daysHeld: number
+  horizon: number
+  reason: string
+} | null> {
+  if (!supabase) return null
+  try {
+    const { data } = await supabase
+      .from('plans')
+      .select('symbol, symbol_name, status, created_at, ended_at, horizon_days, reason')
+      .eq('user_id', uid)
+      .in('status', ['sold_early', 'hatched', 'stopped', 'expired'])
+      .not('ended_at', 'is', null)
+      .order('ended_at', { ascending: false })
+      .limit(1)
+    const r = data?.[0]
+    if (!r) return null
+    const daysHeld = Math.max(
+      0,
+      Math.round((new Date(r.ended_at as string).getTime() - new Date(r.created_at as string).getTime()) / 86_400_000),
+    )
+    return {
+      name: (r.symbol_name as string) || (r.symbol as string),
+      status: r.status as string,
+      daysHeld,
+      horizon: Number(r.horizon_days) || 30,
+      reason: (r.reason as string) || '',
+    }
+  } catch (e) {
+    warn('fetchLastEnded', e)
+    return null
+  }
+}
+
 /** 완주율: 끝난 계획 중 hatched 비율 (%) */
 export async function fetchHatchStats(uid: string): Promise<{ hatchN: number; hatchRate: number }> {
   if (!supabase) return { hatchN: 0, hatchRate: 0 }

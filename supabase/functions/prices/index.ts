@@ -12,6 +12,7 @@
 //   GET /prices/klines?symbol=005930&limit=60
 //   GET /prices/news?q=삼성전자 주가
 //   GET /prices/brief?labels=삼성전자,테슬라   ← Gemini 요약 (GEMINI_API_KEY 시크릿, 없으면 헤드라인만)
+//   POST /prices/review { step, context, answers }  ← AI 복기 대사 (부엉이)
 
 const APP_KEY = Deno.env.get('KIS_APP_KEY') ?? Deno.env.get('KIS_API_KEY') ?? ''
 const APP_SECRET = Deno.env.get('KIS_APP_SECRET') ?? Deno.env.get('KIS_API_SECRET') ?? ''
@@ -20,7 +21,7 @@ const BASE = 'https://openapi.koreainvestment.com:9443'
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, apikey, content-type',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 }
 
 function json(body: unknown, status?: number, sMaxAge?: number) {
@@ -305,8 +306,41 @@ async function fetchNewsItems(q: string, limit = 6): Promise<NewsItem[]> {
   }
 }
 
-// ─── AI 브리핑 (Gemini — 요약·관련성 태깅만, 지시어 금지) ────────────────────
+// ─── Gemini 공통 (플래시 라이트 우선, 404 시 자동 폴백) ─────────────────────
 const GEMINI_KEY = Deno.env.get('GEMINI_API_KEY') ?? ''
+const MODEL_CHAIN = ['gemini-3.1-flash-lite', 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite', 'gemini-2.5-flash']
+let geminiModel = Deno.env.get('GEMINI_MODEL') ?? '' // 성공한 모델을 기억
+
+async function geminiGenerate(prompt: string, asJson = false): Promise<string | null> {
+  if (!GEMINI_KEY) return null
+  const models = geminiModel ? [geminiModel, ...MODEL_CHAIN.filter((m) => m !== geminiModel)] : MODEL_CHAIN
+  for (const m of models) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${GEMINI_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.4, ...(asJson ? { responseMimeType: 'application/json' } : {}) },
+          }),
+          signal: AbortSignal.timeout(20_000),
+        },
+      )
+      const data = await res.json().catch(() => null)
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
+      if (typeof text === 'string' && text.trim()) {
+        geminiModel = m
+        return text.trim()
+      }
+      // 404(모델 없음)·400 등 — 다음 모델로
+    } catch {
+      /* 타임아웃 등 — 다음 모델로 */
+    }
+  }
+  return null
+}
 
 /** 매수/매도 지시·추천 표현 — AI 출력에서 걸러낸다 (제품 불변식) */
 const DIRECTIVE =
@@ -334,20 +368,7 @@ async function geminiBrief(labels: string[], heads: BriefHead[]): Promise<BriefO
     '\n\nJSON 으로만 답해:\n' +
     '{"summary": "헤드라인 흐름을 사실 위주로 한 문장 (최대 90자)", "relevant": [보유 종목의 투자 근거에 영향을 줄 수 있는 헤드라인 index, 최대 3개]}'
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
-        }),
-        signal: AbortSignal.timeout(20_000),
-      },
-    )
-    const data = await res.json().catch(() => null)
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
+    const text = await geminiGenerate(prompt, true)
     if (!text) return null
     const parsed = JSON.parse(text) as { summary?: unknown; relevant?: unknown }
     let summary = typeof parsed.summary === 'string' ? parsed.summary.trim().slice(0, 120) : null
@@ -360,6 +381,63 @@ async function geminiBrief(labels: string[], heads: BriefHead[]): Promise<BriefO
   } catch {
     return null
   }
+}
+
+// ─── AI 복기 (부엉이 대사 — 사실·수용만, 지시어 금지) ────────────────────────
+interface ReviewCtx {
+  name: string
+  status: string // sold_early | hatched | stopped | expired
+  daysHeld: number
+  horizon: number
+  reason: string
+}
+
+const STATUS_KO: Record<string, string> = {
+  sold_early: '계획보다 일찍 꺼냈어(조기 매도)',
+  hatched: '끝까지 완주했어',
+  stopped: '손절선에서 멈췄어',
+  expired: '만기까지 갔어',
+}
+
+/** AI 실패/미설정 시에도 자연스러운 결정적 대사 */
+function reviewFallback(step: number, ctx: ReviewCtx | null, answers: string[]): string {
+  if (step === 0) {
+    if (ctx && ctx.status === 'sold_early')
+      return `${ctx.name} 알을 ${ctx.daysHeld}일 만에 꺼냈네 (계획은 ${ctx.horizon}일). 그때 무슨 생각이었어?`
+    if (ctx && ctx.status === 'hatched') return `${ctx.name} 알 완주했네. 돌아보면 어떤 순간이 제일 흔들렸어?`
+    if (ctx) return `최근 ${ctx.name} 기록을 봤어. 그때 무슨 생각이었어?`
+    return '최근에 팔고 싶었던(또는 사고 싶었던) 순간 있었어? 그때 무슨 생각이었어?'
+  }
+  if (step === 1) {
+    return ctx?.reason
+      ? `그렇구나 — "${answers[0] ?? ''}". 처음 세운 이유(${ctx.reason.slice(0, 24)})에는 변화가 있었어?`
+      : '처음 세운 매수 이유에는 변화가 있었어?'
+  }
+  return '오늘도 기록했네. 감정과 이유를 분리해서 적어둔 것, 그게 복기의 전부야.'
+}
+
+async function reviewLine(step: number, ctx: ReviewCtx | null, answers: string[]): Promise<string> {
+  const fallback = reviewFallback(step, ctx, answers)
+  if (!GEMINI_KEY) return fallback
+  const ctxText = ctx
+    ? `종목 ${ctx.name} · ${STATUS_KO[ctx.status] ?? ctx.status} · ${ctx.daysHeld}일 보유(계획 ${ctx.horizon}일) · 세운 이유: "${ctx.reason || '(비어 있음)'}"`
+    : '(최근 기록 없음)'
+  const task =
+    step === 0
+      ? '복기를 여는 질문 하나를 해. 최근 기록을 구체적으로 언급하고 "그때 무슨 생각이었어?"처럼 감정을 묻는 방향.'
+      : step === 1
+        ? `사용자가 "${answers[0] ?? ''}"라고 답했어. 짧게 받아주고, 세웠던 이유가 여전한지 묻는 후속 질문 하나.`
+        : `사용자가 "${answers[0] ?? ''}" → "${answers[1] ?? ''}"라고 답했어. 복기를 닫는 수용의 한마디 — 기록한 것 자체를 인정하고, 감정과 이유를 분리한 점을 사실로 짚어줘.`
+  const prompt =
+    '너는 투자 기록 앱의 복기 도우미 부엉이야. 규칙을 반드시 지켜:\n' +
+    '- 매수/매도/추천/전망·예측 표현 절대 금지. 사용자를 비난하지 않는다.\n' +
+    '- 짧은 반말 한 문장(최대 110자). 이모지·따옴표·머리말 없이 문장만 출력.\n\n' +
+    `최근 기록: ${ctxText}\n할 일: ${task}`
+  const out = await geminiGenerate(prompt)
+  if (!out) return fallback
+  const line = out.replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 160)
+  if (!line || DIRECTIVE.test(line)) return fallback // 지시어 감지 → 결정적 대사
+  return line
 }
 
 // ─── 라우트 ─────────────────────────────────────────────────────────────────
@@ -439,6 +517,19 @@ Deno.serve(async (req) => {
       }
       await cacheSet(ck, { at: Date.now(), data: out })
       return json(out, 200, 300)
+    }
+
+    if (path.endsWith('/review') && req.method === 'POST') {
+      // AI 복기 대사 — body: { step, context, answers }
+      const body = (await req.json().catch(() => null)) as {
+        step?: number
+        context?: ReviewCtx | null
+        answers?: string[]
+      } | null
+      const step = Math.max(0, Math.min(2, Number(body?.step) || 0))
+      const ctx = body?.context && typeof body.context.name === 'string' ? body.context : null
+      const answers = (Array.isArray(body?.answers) ? body!.answers! : []).map((a) => String(a).slice(0, 40)).slice(0, 2)
+      return json({ text: await reviewLine(step, ctx, answers) })
     }
 
     if (path.endsWith('/klines')) {

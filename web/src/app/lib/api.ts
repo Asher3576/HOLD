@@ -70,6 +70,31 @@ export async function fetchBrief(labels: string[]): Promise<Brief | null> {
   }
 }
 
+// ─── AI 복기 (엣지 /review — 부엉이 대사) ───────────────────────────────────
+export interface ReviewCtx {
+  name: string
+  status: string
+  daysHeld: number
+  horizon: number
+  reason: string
+}
+
+export async function fetchReviewLine(step: number, context: ReviewCtx | null, answers: string[]): Promise<string | null> {
+  try {
+    const res = await fetch(`${FN_BASE}/review`, {
+      method: 'POST',
+      headers: { ...HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step, context, answers }),
+      signal: AbortSignal.timeout(25_000),
+    })
+    if (!res.ok) throw new Error(`http ${res.status}`)
+    const data = await res.json()
+    return typeof data?.text === 'string' && data.text ? data.text : null
+  } catch {
+    return null // 실패 시 클라이언트 결정적 대사 폴백
+  }
+}
+
 const klinesCache = new Map<string, PricePoint[]>()
 
 /** 일봉 종가 → 차트 포인트. 실패 시 null (호출부 목데이터 폴백). */
