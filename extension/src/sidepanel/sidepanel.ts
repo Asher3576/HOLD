@@ -157,12 +157,18 @@ async function loadSymbol(code: string, label: string) {
     quote = q0
     const closes: number[] = (kRes?.candles ?? []).map((c: { close: number }) => c.close).filter((v: number) => v > 0)
     closesG = closes
+    // KIS 공식 종목명이 오면 그걸 쓴다 (탭 제목 추정보다 정확)
+    const kisName = typeof kRes?.name === 'string' ? kRes.name.trim() : ''
+    if (kisName && symbol === code) {
+      symbolLabel = kisName
+      $('symName').textContent = kisName
+    }
     if (!quote) {
       // 엣지 콜드스타트/KIS 토큰 발급 직후 순간 실패 — 1.5초 뒤 한 번 더
       await new Promise((r) => setTimeout(r, 1500))
       quote = await getQuote()
     }
-    let basis = '지연시세 기준'
+    let basis = '정규장 기준 · 시간외 미반영'
     if (!quote && closes.length >= 2) {
       // 시세 실패 시 일봉 종가로 폴백 — 화면이 죽지 않게
       const last = closes[closes.length - 1]
@@ -376,7 +382,11 @@ interface NativeLine {
   dashed: boolean
 }
 
-/** 페이지 MAIN 월드에서 TradingView 위젯을 찾아 진짜 수평선 작도를 생성 */
+/**
+ * 페이지 MAIN 월드에서 TradingView 위젯을 찾아 진짜 수평선 작도를 생성.
+ * 탐색 순서: 알려진 전역 이름(tradingViewApi 등) → window 전 프로퍼티 →
+ * 같은 출처 iframe 내부(차팅 라이브러리는 자체 iframe 의 tradingViewApi 에 API 를 둔다).
+ */
 async function tvNativeDraw(lines: NativeLine[]): Promise<number> {
   if (tabId == null) return 0
   try {
@@ -384,28 +394,70 @@ async function tvNativeDraw(lines: NativeLine[]): Promise<number> {
       target: { tabId, allFrames: true },
       world: 'MAIN',
       func: (lines: NativeLine[]) => {
-        const win = window as unknown as Record<string, unknown> & {
-          __HOLD_TV_IDS?: unknown[]
+        type ChartApi = {
+          createShape: (point: unknown, opts: unknown) => unknown
+          removeEntity?: (id: unknown) => void
         }
-        const findWidget = (): { activeChart: () => unknown } | null => {
+        const asChart = (v: unknown): ChartApi | null => {
+          if (!v || (typeof v !== 'object' && typeof v !== 'function')) return null
           try {
-            for (const k of Object.keys(win)) {
-              const v = win[k] as { activeChart?: unknown; onChartReady?: unknown } | null
-              if (v && typeof v.activeChart === 'function' && typeof v.onChartReady === 'function') {
-                return v as { activeChart: () => unknown }
-              }
+            const o = v as { activeChart?: () => unknown; createShape?: unknown; removeEntity?: unknown }
+            if (typeof o.activeChart === 'function') {
+              const c = o.activeChart() as ChartApi | null
+              if (c && typeof c.createShape === 'function') return c
+            }
+            if (typeof o.createShape === 'function' && typeof o.removeEntity === 'function') {
+              return o as unknown as ChartApi
             }
           } catch {
-            /* cross-origin 등 무시 */
+            /* cross-origin/게터 예외 무시 */
           }
           return null
         }
-        const wg = findWidget()
-        if (!wg) return 0
-        try {
-          const chart = wg.activeChart() as {
-            createShape: (point: unknown, opts: unknown) => unknown
+        const findChart = (w: Record<string, unknown>): ChartApi | null => {
+          for (const k of ['tradingViewApi', 'tvWidget', 'widget', 'chartWidget', 'TradingViewApi']) {
+            try {
+              const c = asChart(w[k])
+              if (c) return c
+            } catch {
+              /* 무시 */
+            }
           }
+          let names: string[] = []
+          try {
+            names = Object.getOwnPropertyNames(w)
+          } catch {
+            /* 무시 */
+          }
+          for (const k of names) {
+            if (k.startsWith('on') || k.startsWith('webkit')) continue
+            let v: unknown
+            try {
+              v = w[k]
+            } catch {
+              continue
+            }
+            const c = asChart(v)
+            if (c) return c
+          }
+          return null
+        }
+        const wins: Record<string, unknown>[] = [window as unknown as Record<string, unknown>]
+        try {
+          for (const f of Array.from(document.querySelectorAll('iframe'))) {
+            try {
+              const cw = (f as HTMLIFrameElement).contentWindow
+              if (cw && cw.document) wins.push(cw as unknown as Record<string, unknown>)
+            } catch {
+              /* cross-origin 프레임 제외 */
+            }
+          }
+        } catch {
+          /* 무시 */
+        }
+        for (const w of wins) {
+          const chart = findChart(w)
+          if (!chart) continue
           const ids: unknown[] = []
           let n = 0
           for (const l of lines) {
@@ -436,11 +488,13 @@ async function tvNativeDraw(lines: NativeLine[]): Promise<number> {
               /* 개별 선 실패 무시 */
             }
           }
-          win.__HOLD_TV_IDS = (win.__HOLD_TV_IDS ?? []).concat(ids)
-          return n
-        } catch {
-          return 0
+          if (n > 0) {
+            const store = w as { __HOLD_TV_IDS?: unknown[] }
+            store.__HOLD_TV_IDS = (store.__HOLD_TV_IDS ?? []).concat(ids)
+            return n
+          }
         }
+        return 0
       },
       args: [lines],
     })
@@ -450,7 +504,7 @@ async function tvNativeDraw(lines: NativeLine[]): Promise<number> {
   }
 }
 
-/** 네이티브로 그린 선 제거 */
+/** 네이티브로 그린 선 제거 — tvNativeDraw 와 같은 방식으로 위젯을 찾아 지운다 */
 async function tvNativeClear(): Promise<void> {
   if (tabId == null) return
   try {
@@ -458,28 +512,78 @@ async function tvNativeClear(): Promise<void> {
       target: { tabId, allFrames: true },
       world: 'MAIN',
       func: () => {
-        const win = window as unknown as Record<string, unknown> & { __HOLD_TV_IDS?: unknown[] }
-        const ids = win.__HOLD_TV_IDS ?? []
-        if (!ids.length) return
+        type ChartApi = { removeEntity: (id: unknown) => void }
+        const asChart = (v: unknown): ChartApi | null => {
+          if (!v || (typeof v !== 'object' && typeof v !== 'function')) return null
+          try {
+            const o = v as { activeChart?: () => unknown; removeEntity?: unknown }
+            if (typeof o.activeChart === 'function') {
+              const c = o.activeChart() as ChartApi | null
+              if (c && typeof c.removeEntity === 'function') return c
+            }
+            if (typeof o.removeEntity === 'function') return o as unknown as ChartApi
+          } catch {
+            /* 무시 */
+          }
+          return null
+        }
+        const findChart = (w: Record<string, unknown>): ChartApi | null => {
+          for (const k of ['tradingViewApi', 'tvWidget', 'widget', 'chartWidget', 'TradingViewApi']) {
+            try {
+              const c = asChart(w[k])
+              if (c) return c
+            } catch {
+              /* 무시 */
+            }
+          }
+          let names: string[] = []
+          try {
+            names = Object.getOwnPropertyNames(w)
+          } catch {
+            /* 무시 */
+          }
+          for (const k of names) {
+            if (k.startsWith('on') || k.startsWith('webkit')) continue
+            let v: unknown
+            try {
+              v = w[k]
+            } catch {
+              continue
+            }
+            const c = asChart(v)
+            if (c) return c
+          }
+          return null
+        }
+        const wins: Record<string, unknown>[] = [window as unknown as Record<string, unknown>]
         try {
-          for (const k of Object.keys(win)) {
-            const v = win[k] as { activeChart?: () => { removeEntity: (id: unknown) => void } } | null
-            if (v && typeof v.activeChart === 'function') {
-              const chart = v.activeChart()
-              for (const id of ids) {
-                try {
-                  chart.removeEntity(id)
-                } catch {
-                  /* 이미 지워진 선 무시 */
-                }
-              }
-              break
+          for (const f of Array.from(document.querySelectorAll('iframe'))) {
+            try {
+              const cw = (f as HTMLIFrameElement).contentWindow
+              if (cw && cw.document) wins.push(cw as unknown as Record<string, unknown>)
+            } catch {
+              /* cross-origin 프레임 제외 */
             }
           }
         } catch {
           /* 무시 */
         }
-        win.__HOLD_TV_IDS = []
+        for (const w of wins) {
+          const store = w as { __HOLD_TV_IDS?: unknown[] }
+          const ids = store.__HOLD_TV_IDS ?? []
+          if (!ids.length) continue
+          const chart = findChart(w)
+          if (chart) {
+            for (const id of ids) {
+              try {
+                chart.removeEntity(id)
+              } catch {
+                /* 이미 지워진 선 무시 */
+              }
+            }
+          }
+          store.__HOLD_TV_IDS = []
+        }
       },
     })
   } catch {
@@ -514,12 +618,23 @@ async function send(msg: unknown) {
 }
 
 // ─── 탭 동기화 ────────────────────────────────────────────────────────────
-/** 페이지 텍스트에서 뽑은 라벨이 가격/퍼센트 조각이면 탭 제목 → 코드 순으로 대체 */
+/**
+ * 라벨 정리 — 토스 등은 탭 제목이 "1,165,000원 +4.29% · SK스퀘어"처럼 가격으로 시작해서
+ * 첫 조각을 그대로 쓰면 종목명 자리에 가격이 들어간다. 가격/퍼센트 조각을 걷어내고
+ * 제목의 모든 조각을 훑어 진짜 이름을 찾는다. 못 찾으면 코드.
+ */
 function cleanLabel(raw: string, title: string, code: string): string {
-  const bad = (s: string) => !s || s.length > 20 || /[%₩$]|원|\d[,.]\d|^[\d\s.,+\-]+$/.test(s)
-  if (!bad(raw)) return raw
-  const t = title.split(/[|·:\-–]/)[0].trim()
-  if (!bad(t)) return t
+  const strip = (s: string) =>
+    s
+      .replace(/[+\-]?\d[\d,]*(?:\.\d+)?\s*(?:원|%)/g, ' ')
+      .replace(/[₩$][\d,.]+/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+  const bad = (s: string) => !s || s.length > 20 || /[%₩$]|\d\s*원|\d[,.]\d|^[\d\s.,+\-]+$/.test(s)
+  for (const cand of [raw.trim(), strip(raw)]) if (!bad(cand)) return cand
+  for (const seg of title.split(/[|·:–—-]/)) {
+    for (const cand of [seg.trim(), strip(seg)]) if (!bad(cand)) return cand
+  }
   return code
 }
 
@@ -537,8 +652,9 @@ async function syncTab(fromPoll = false) {
   let found = detectSymbol(tab.url, tab.title ?? '')
   if (!found && /^https?:/.test(tab.url)) {
     found = await detectFromPage(tab.id)
-    if (found) found.label = cleanLabel(found.label, tab.title ?? '', found.code)
   }
+  // URL 어댑터든 페이지 텍스트든 라벨은 항상 정리 (탭 제목이 가격으로 시작하는 사이트 대응)
+  if (found) found.label = cleanLabel(found.label, tab.title ?? '', found.code)
   if (found && found.code !== symbol) {
     clearTimeout(pollTimer)
     await loadSymbol(found.code, found.label)
@@ -582,8 +698,8 @@ $('drawLevels').addEventListener('click', () => {
       $('levelHint').textContent = '차트 자체에 그렸어요 — 줌/스크롤을 따라가요 · [지우기]로 제거'
       return
     }
-    // 폴백: 화면 오버레이 (2점 보정)
-    $('levelHint').textContent = '처음 한 번, 화면의 가격 위치 2곳을 클릭해 보정해요'
+    // 폴백: 화면 오버레이 (축 눈금 자동 인식 → 안 되면 2점 보정)
+    $('levelHint').textContent = '축 눈금을 자동 인식해요 · 안 되면 화면 보정 2번'
     void send({
       type: 'HOLD_DRAW_LEVELS',
       currentPrice: quote!.price,

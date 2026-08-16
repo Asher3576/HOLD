@@ -2,7 +2,8 @@
 (() => {
   // src/content/index.ts
   var w = window;
-  if (!w.__HOLD_CS__) {
+  var HOLD_CS_VER = "0.4.1";
+  if (w.__HOLD_CS__ !== HOLD_CS_VER) {
     let autoDetectRegion = function() {
       let best = null;
       let bestArea = 0;
@@ -260,6 +261,61 @@
       document.documentElement.appendChild(box);
       input.focus();
       pendingY2 = y;
+    }, autoCalibrateFromAxis = function(currentPrice) {
+      if (!region) return false;
+      const R = region;
+      const right = [];
+      const left = [];
+      try {
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        let node;
+        let seen = 0;
+        while ((node = walker.nextNode()) && seen < 4e3) {
+          seen++;
+          const s = (node.nodeValue ?? "").trim();
+          if (!/^[\d,]+(?:\.\d+)?$/.test(s)) continue;
+          const p = Number(s.replace(/,/g, ""));
+          if (!(p > 0)) continue;
+          const el = node.parentElement;
+          if (!el) continue;
+          const r = el.getBoundingClientRect();
+          if (!r.width || r.height > 36 || r.width > 150) continue;
+          const cy = r.top + r.height / 2;
+          const cx = r.left + r.width / 2;
+          if (cy < R.y - 10 || cy > R.y + R.h + 10) continue;
+          if (cx >= R.x + R.w * 0.72 && cx <= R.x + R.w + 90) right.push({ y: cy, p });
+          else if (cx >= R.x - 90 && cx <= R.x + R.w * 0.28) left.push({ y: cy, p });
+        }
+      } catch {
+        return false;
+      }
+      const chain = (pts) => {
+        const a = [...pts].sort((m, n) => m.y - n.y);
+        let best = [];
+        for (let i = 0; i < a.length; i++) {
+          const c = [a[i]];
+          for (let j = i + 1; j < a.length; j++) {
+            if (a[j].p < c[c.length - 1].p && a[j].y > c[c.length - 1].y + 6) c.push(a[j]);
+          }
+          if (c.length > best.length) best = c;
+        }
+        return best;
+      };
+      const pick = [chain(right), chain(left)].sort((m, n) => n.length - m.length)[0];
+      if (!pick || pick.length < 2) return false;
+      const first = pick[0];
+      const last = pick[pick.length - 1];
+      if (last.y - first.y < 40 || first.p <= last.p) return false;
+      const slope = (last.p - first.p) / (last.y - first.y);
+      for (const pt of pick) {
+        const expect = first.p + slope * (pt.y - first.y);
+        const tol = (first.p - last.p) * 0.06 + Math.abs(expect) * 2e-3;
+        if (Math.abs(pt.p - expect) > tol) return false;
+      }
+      const yCur = first.y + (currentPrice - first.p) / slope;
+      if (yCur < R.y - R.h * 0.5 || yCur > R.y + R.h * 1.5) return false;
+      calib = { y1: first.y, p1: first.p, y2: last.y, p2: last.p };
+      return true;
     }, priceToY = function(price) {
       if (!calib || calib.p2 === calib.p1) return null;
       return calib.y1 + (price - calib.p1) * (calib.y2 - calib.y1) / (calib.p2 - calib.p1);
@@ -319,8 +375,12 @@
       drag = null;
       redraw();
     };
-    autoDetectRegion2 = autoDetectRegion, ensureCanvas2 = ensureCanvas, resize2 = resize, redraw2 = redraw, line2 = line, tag2 = tag, ensureToolbar2 = ensureToolbar, showToast2 = showToast, setMode2 = setMode, startCalibration2 = startCalibration, askSecondPrice2 = askSecondPrice, priceToY2 = priceToY, yToPrice2 = yToPrice, renderLevels2 = renderLevels, fmt2 = fmt, onDown2 = onDown, onMove2 = onMove, onUp2 = onUp;
-    w.__HOLD_CS__ = true;
+    autoDetectRegion2 = autoDetectRegion, ensureCanvas2 = ensureCanvas, resize2 = resize, redraw2 = redraw, line2 = line, tag2 = tag, ensureToolbar2 = ensureToolbar, showToast2 = showToast, setMode2 = setMode, startCalibration2 = startCalibration, askSecondPrice2 = askSecondPrice, autoCalibrateFromAxis2 = autoCalibrateFromAxis, priceToY2 = priceToY, yToPrice2 = yToPrice, renderLevels2 = renderLevels, fmt2 = fmt, onDown2 = onDown, onMove2 = onMove, onUp2 = onUp;
+    for (const el of Array.from(document.documentElement.children)) {
+      const z = el.style?.zIndex ?? "";
+      if (/^214748364\d$/.test(z)) el.remove();
+    }
+    w.__HOLD_CS__ = HOLD_CS_VER;
     const Z = "2147483640";
     const COLOR = {
       support: "#57C7A4",
@@ -359,7 +419,10 @@
       } else if (msg?.type === "HOLD_DRAW_LEVELS") {
         const { levels, currentPrice } = msg;
         if (!region) autoDetectRegion();
-        if (!calib) {
+        if (autoCalibrateFromAxis(currentPrice)) {
+          renderLevels(levels);
+          showToast("\uCC28\uD2B8 \uB208\uAE08\uC744 \uC790\uB3D9 \uC778\uC2DD\uD574\uC11C \uADF8\uB838\uC5B4 \u2014 \uCC28\uD2B8\uB97C \uC6C0\uC9C1\uC600\uC73C\uBA74 \uB2E4\uC2DC \uAE0B\uAE30");
+        } else if (!calib) {
           pendingLevels = { levels, currentPrice };
           pendingP1 = currentPrice;
           startCalibration(currentPrice);
@@ -382,6 +445,7 @@
   var setMode2;
   var startCalibration2;
   var askSecondPrice2;
+  var autoCalibrateFromAxis2;
   var priceToY2;
   var yToPrice2;
   var renderLevels2;

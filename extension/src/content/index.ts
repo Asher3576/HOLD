@@ -25,9 +25,15 @@ interface Calib {
   p2: number
 }
 
-const w = window as unknown as { __HOLD_CS__?: boolean }
-if (!w.__HOLD_CS__) {
-  w.__HOLD_CS__ = true
+const w = window as unknown as { __HOLD_CS__?: string | boolean }
+const HOLD_CS_VER = '0.4.1'
+if (w.__HOLD_CS__ !== HOLD_CS_VER) {
+  // 확장 업데이트 후 남아있는 이전 버전 오버레이 제거 (우리 UI 는 전부 <html> 직속 + 고유 z-index)
+  for (const el of Array.from(document.documentElement.children)) {
+    const z = (el as HTMLElement).style?.zIndex ?? ''
+    if (/^214748364\d$/.test(z)) el.remove()
+  }
+  w.__HOLD_CS__ = HOLD_CS_VER
 
   const Z = '2147483640'
   const COLOR: Record<LevelIn['kind'], string> = {
@@ -350,6 +356,76 @@ if (!w.__HOLD_CS__) {
   }
   let pendingY2 = 0
 
+  /**
+   * 차트 축 눈금 자동 인식 — 화면의 가격 눈금 텍스트(DOM)를 찾아 클릭 없이 보정한다.
+   * 차트 영역(region) 좌/우 가장자리의 숫자들 중, 아래로 갈수록 가격이 일정하게
+   * 감소하는(=진짜 Y축) 줄만 골라 선형 매핑을 만든다. 눈금이 캔버스에 그려진
+   * 사이트(텍스트 없음)면 실패하고 기존 수동 2점 보정으로 넘어간다.
+   */
+  function autoCalibrateFromAxis(currentPrice: number): boolean {
+    if (!region) return false // 차트 영역을 못 찾았으면 오탐(호가창 등) 위험 — 시도 안 함
+    const R = region
+    interface Pt {
+      y: number
+      p: number
+    }
+    const right: Pt[] = []
+    const left: Pt[] = []
+    try {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+      let node: Node | null
+      let seen = 0
+      while ((node = walker.nextNode()) && seen < 4000) {
+        seen++
+        const s = (node.nodeValue ?? '').trim()
+        if (!/^[\d,]+(?:\.\d+)?$/.test(s)) continue
+        const p = Number(s.replace(/,/g, ''))
+        if (!(p > 0)) continue
+        const el = node.parentElement
+        if (!el) continue
+        const r = el.getBoundingClientRect()
+        if (!r.width || r.height > 36 || r.width > 150) continue
+        const cy = r.top + r.height / 2
+        const cx = r.left + r.width / 2
+        if (cy < R.y - 10 || cy > R.y + R.h + 10) continue
+        if (cx >= R.x + R.w * 0.72 && cx <= R.x + R.w + 90) right.push({ y: cy, p })
+        else if (cx >= R.x - 90 && cx <= R.x + R.w * 0.28) left.push({ y: cy, p })
+      }
+    } catch {
+      return false
+    }
+    // y 오름차순에서 가격이 계속 감소하는 최장 부분열만 남긴다 (지표 배지 등 잡음 제거)
+    const chain = (pts: Pt[]): Pt[] => {
+      const a = [...pts].sort((m, n) => m.y - n.y)
+      let best: Pt[] = []
+      for (let i = 0; i < a.length; i++) {
+        const c = [a[i]]
+        for (let j = i + 1; j < a.length; j++) {
+          if (a[j].p < c[c.length - 1].p && a[j].y > c[c.length - 1].y + 6) c.push(a[j])
+        }
+        if (c.length > best.length) best = c
+      }
+      return best
+    }
+    const pick = [chain(right), chain(left)].sort((m, n) => n.length - m.length)[0]
+    if (!pick || pick.length < 2) return false
+    const first = pick[0]
+    const last = pick[pick.length - 1]
+    if (last.y - first.y < 40 || first.p <= last.p) return false
+    // 눈금이 등간격 선형인지 검사 — 아무 숫자나 주운 경우를 걸러낸다
+    const slope = (last.p - first.p) / (last.y - first.y)
+    for (const pt of pick) {
+      const expect = first.p + slope * (pt.y - first.y)
+      const tol = (first.p - last.p) * 0.06 + Math.abs(expect) * 0.002
+      if (Math.abs(pt.p - expect) > tol) return false
+    }
+    // 현재가가 이 매핑에서 차트 근처로 떨어져야 진짜 가격축이다
+    const yCur = first.y + (currentPrice - first.p) / slope
+    if (yCur < R.y - R.h * 0.5 || yCur > R.y + R.h * 1.5) return false
+    calib = { y1: first.y, p1: first.p, y2: last.y, p2: last.p }
+    return true
+  }
+
   function priceToY(price: number): number | null {
     if (!calib || calib.p2 === calib.p1) return null
     return calib.y1 + ((price - calib.p1) * (calib.y2 - calib.y1)) / (calib.p2 - calib.p1)
@@ -442,7 +518,11 @@ if (!w.__HOLD_CS__) {
     } else if (msg?.type === 'HOLD_DRAW_LEVELS') {
       const { levels, currentPrice } = msg as { levels: LevelIn[]; currentPrice: number }
       if (!region) autoDetectRegion()
-      if (!calib) {
+      // 1순위: 축 눈금 자동 인식 (클릭 불필요, 매번 새로 읽어 줌/스크롤 반영) → 실패 시 수동 2점 보정
+      if (autoCalibrateFromAxis(currentPrice)) {
+        renderLevels(levels)
+        showToast('차트 눈금을 자동 인식해서 그렸어 — 차트를 움직였으면 다시 긋기')
+      } else if (!calib) {
         pendingLevels = { levels, currentPrice }
         pendingP1 = currentPrice
         startCalibration(currentPrice)

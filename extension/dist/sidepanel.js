@@ -116,11 +116,16 @@
       quote = q0;
       const closes = (kRes?.candles ?? []).map((c) => c.close).filter((v) => v > 0);
       closesG = closes;
+      const kisName = typeof kRes?.name === "string" ? kRes.name.trim() : "";
+      if (kisName && symbol === code) {
+        symbolLabel = kisName;
+        $("symName").textContent = kisName;
+      }
       if (!quote) {
         await new Promise((r) => setTimeout(r, 1500));
         quote = await getQuote();
       }
-      let basis = "\uC9C0\uC5F0\uC2DC\uC138 \uAE30\uC900";
+      let basis = "\uC815\uADDC\uC7A5 \uAE30\uC900 \xB7 \uC2DC\uAC04\uC678 \uBBF8\uBC18\uC601";
       if (!quote && closes.length >= 2) {
         const last = closes[closes.length - 1];
         const prev = closes[closes.length - 2];
@@ -310,23 +315,61 @@
         target: { tabId, allFrames: true },
         world: "MAIN",
         func: (lines2) => {
-          const win = window;
-          const findWidget = () => {
+          const asChart = (v) => {
+            if (!v || typeof v !== "object" && typeof v !== "function") return null;
             try {
-              for (const k of Object.keys(win)) {
-                const v = win[k];
-                if (v && typeof v.activeChart === "function" && typeof v.onChartReady === "function") {
-                  return v;
-                }
+              const o = v;
+              if (typeof o.activeChart === "function") {
+                const c = o.activeChart();
+                if (c && typeof c.createShape === "function") return c;
+              }
+              if (typeof o.createShape === "function" && typeof o.removeEntity === "function") {
+                return o;
               }
             } catch {
             }
             return null;
           };
-          const wg = findWidget();
-          if (!wg) return 0;
+          const findChart = (w) => {
+            for (const k of ["tradingViewApi", "tvWidget", "widget", "chartWidget", "TradingViewApi"]) {
+              try {
+                const c = asChart(w[k]);
+                if (c) return c;
+              } catch {
+              }
+            }
+            let names = [];
+            try {
+              names = Object.getOwnPropertyNames(w);
+            } catch {
+            }
+            for (const k of names) {
+              if (k.startsWith("on") || k.startsWith("webkit")) continue;
+              let v;
+              try {
+                v = w[k];
+              } catch {
+                continue;
+              }
+              const c = asChart(v);
+              if (c) return c;
+            }
+            return null;
+          };
+          const wins = [window];
           try {
-            const chart = wg.activeChart();
+            for (const f of Array.from(document.querySelectorAll("iframe"))) {
+              try {
+                const cw = f.contentWindow;
+                if (cw && cw.document) wins.push(cw);
+              } catch {
+              }
+            }
+          } catch {
+          }
+          for (const w of wins) {
+            const chart = findChart(w);
+            if (!chart) continue;
             const ids = [];
             let n = 0;
             for (const l of lines2) {
@@ -356,11 +399,13 @@
               } catch {
               }
             }
-            win.__HOLD_TV_IDS = (win.__HOLD_TV_IDS ?? []).concat(ids);
-            return n;
-          } catch {
-            return 0;
+            if (n > 0) {
+              const store = w;
+              store.__HOLD_TV_IDS = (store.__HOLD_TV_IDS ?? []).concat(ids);
+              return n;
+            }
           }
+          return 0;
         },
         args: [lines]
       });
@@ -376,26 +421,71 @@
         target: { tabId, allFrames: true },
         world: "MAIN",
         func: () => {
-          const win = window;
-          const ids = win.__HOLD_TV_IDS ?? [];
-          if (!ids.length) return;
+          const asChart = (v) => {
+            if (!v || typeof v !== "object" && typeof v !== "function") return null;
+            try {
+              const o = v;
+              if (typeof o.activeChart === "function") {
+                const c = o.activeChart();
+                if (c && typeof c.removeEntity === "function") return c;
+              }
+              if (typeof o.removeEntity === "function") return o;
+            } catch {
+            }
+            return null;
+          };
+          const findChart = (w) => {
+            for (const k of ["tradingViewApi", "tvWidget", "widget", "chartWidget", "TradingViewApi"]) {
+              try {
+                const c = asChart(w[k]);
+                if (c) return c;
+              } catch {
+              }
+            }
+            let names = [];
+            try {
+              names = Object.getOwnPropertyNames(w);
+            } catch {
+            }
+            for (const k of names) {
+              if (k.startsWith("on") || k.startsWith("webkit")) continue;
+              let v;
+              try {
+                v = w[k];
+              } catch {
+                continue;
+              }
+              const c = asChart(v);
+              if (c) return c;
+            }
+            return null;
+          };
+          const wins = [window];
           try {
-            for (const k of Object.keys(win)) {
-              const v = win[k];
-              if (v && typeof v.activeChart === "function") {
-                const chart = v.activeChart();
-                for (const id of ids) {
-                  try {
-                    chart.removeEntity(id);
-                  } catch {
-                  }
-                }
-                break;
+            for (const f of Array.from(document.querySelectorAll("iframe"))) {
+              try {
+                const cw = f.contentWindow;
+                if (cw && cw.document) wins.push(cw);
+              } catch {
               }
             }
           } catch {
           }
-          win.__HOLD_TV_IDS = [];
+          for (const w of wins) {
+            const store = w;
+            const ids = store.__HOLD_TV_IDS ?? [];
+            if (!ids.length) continue;
+            const chart = findChart(w);
+            if (chart) {
+              for (const id of ids) {
+                try {
+                  chart.removeEntity(id);
+                } catch {
+                }
+              }
+            }
+            store.__HOLD_TV_IDS = [];
+          }
         }
       });
     } catch {
@@ -424,10 +514,12 @@
     }
   }
   function cleanLabel(raw, title, code) {
-    const bad = (s) => !s || s.length > 20 || /[%₩$]|원|\d[,.]\d|^[\d\s.,+\-]+$/.test(s);
-    if (!bad(raw)) return raw;
-    const t = title.split(/[|·:\-–]/)[0].trim();
-    if (!bad(t)) return t;
+    const strip = (s) => s.replace(/[+\-]?\d[\d,]*(?:\.\d+)?\s*(?:원|%)/g, " ").replace(/[₩$][\d,.]+/g, " ").replace(/\s{2,}/g, " ").trim();
+    const bad = (s) => !s || s.length > 20 || /[%₩$]|\d\s*원|\d[,.]\d|^[\d\s.,+\-]+$/.test(s);
+    for (const cand of [raw.trim(), strip(raw)]) if (!bad(cand)) return cand;
+    for (const seg of title.split(/[|·:–—-]/)) {
+      for (const cand of [seg.trim(), strip(seg)]) if (!bad(cand)) return cand;
+    }
     return code;
   }
   var pollTimer;
@@ -443,8 +535,8 @@
     let found = detectSymbol(tab.url, tab.title ?? "");
     if (!found && /^https?:/.test(tab.url)) {
       found = await detectFromPage(tab.id);
-      if (found) found.label = cleanLabel(found.label, tab.title ?? "", found.code);
     }
+    if (found) found.label = cleanLabel(found.label, tab.title ?? "", found.code);
     if (found && found.code !== symbol) {
       clearTimeout(pollTimer);
       await loadSymbol(found.code, found.label);
@@ -484,7 +576,7 @@
         $("levelHint").textContent = "\uCC28\uD2B8 \uC790\uCCB4\uC5D0 \uADF8\uB838\uC5B4\uC694 \u2014 \uC90C/\uC2A4\uD06C\uB864\uC744 \uB530\uB77C\uAC00\uC694 \xB7 [\uC9C0\uC6B0\uAE30]\uB85C \uC81C\uAC70";
         return;
       }
-      $("levelHint").textContent = "\uCC98\uC74C \uD55C \uBC88, \uD654\uBA74\uC758 \uAC00\uACA9 \uC704\uCE58 2\uACF3\uC744 \uD074\uB9AD\uD574 \uBCF4\uC815\uD574\uC694";
+      $("levelHint").textContent = "\uCD95 \uB208\uAE08\uC744 \uC790\uB3D9 \uC778\uC2DD\uD574\uC694 \xB7 \uC548 \uB418\uBA74 \uD654\uBA74 \uBCF4\uC815 2\uBC88";
       void send({
         type: "HOLD_DRAW_LEVELS",
         currentPrice: quote.price,

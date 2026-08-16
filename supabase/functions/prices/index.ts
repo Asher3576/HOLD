@@ -230,7 +230,10 @@ async function dailyCloses(sym: string, limit: number) {
     .map((row) => dayCandle(row.stck_bsop_date ?? row.xymd, row.stck_clpr ?? row.ovrs_nmix_prpr ?? row.last ?? row.clos))
     .filter((c): c is NonNullable<typeof c> => !!c)
     .sort((a, b) => a.time - b.time)
-  return { candles: candles.slice(-limit) }
+  // output1 에 KIS 공식 종목명(hts_kor_isnm)이 온다 — 패널 라벨용
+  const out1 = (r.data as { output1?: Record<string, unknown> })?.output1
+  const name = String(out1?.hts_kor_isnm ?? '').trim()
+  return { candles: candles.slice(-limit), ...(name ? { name } : {}) }
 }
 
 // ─── 라우트 ─────────────────────────────────────────────────────────────────
