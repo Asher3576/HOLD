@@ -17,5 +17,6 @@ await build({
 
 cpSync('src/sidepanel/sidepanel.html', 'dist/sidepanel.html')
 cpSync('manifest.json', 'dist/manifest.json')
+cpSync('icons', 'dist/icons', { recursive: true })
 
 console.log('extension built → dist/ (chrome://extensions → 압축해제된 확장 프로그램 로드)')
