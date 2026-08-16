@@ -55,13 +55,47 @@ function detectSymbol(url: string, title: string): { code: string; label: string
       m = u.pathname.match(/stocks\/([A-Za-z0-9]{1,12})/)
       if (m && /^\d{6}$/.test(m[1])) return { code: m[1], label: title.split(/[:|-]/)[0].trim() || m[1] }
     }
-    // 일반 폴백: URL 안의 6자리 코드
-    m = url.match(/[^0-9](\d{6})(?:[^0-9]|$)/)
-    if (m) return { code: m[1], label: title.split(/[:|-]/)[0].trim() || m[1] }
+    // 일반 폴백: URL 안의 6자리 코드 (uuid 라우트를 쓰는 사이트는 오탐 방지 위해 제외)
+    if (!h.endsWith('stockersclub.com')) {
+      m = url.match(/[^0-9a-fA-F](\d{6})(?:[^0-9a-fA-F]|$)/)
+      if (m) return { code: m[1], label: title.split(/[:|-]/)[0].trim() || m[1] }
+    }
   } catch {
     /* URL 파싱 실패 무시 */
   }
   return null
+}
+
+/**
+ * URL 로 못 찾을 때: 페이지 제목·og:title·헤더 텍스트에서 심볼 패턴만 찾는다.
+ * (사용자가 부른 탭에서만 실행, 아무것도 저장하지 않음 — 차트 픽셀·개인정보는 읽지 않는다)
+ * 스토커스클럽 방 헤더 "TSLA $341.63" 같은 패턴을 잡는다.
+ */
+async function detectFromPage(tid: number): Promise<{ code: string; label: string } | null> {
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId: tid },
+      func: () => {
+        const texts: string[] = [document.title]
+        const og = document.querySelector('meta[property="og:title"]') as HTMLMetaElement | null
+        if (og?.content) texts.push(og.content)
+        const h1 = document.querySelector('h1')
+        if (h1?.textContent) texts.push(h1.textContent)
+        texts.push((document.body?.innerText || '').slice(0, 3000))
+        for (const s of texts) {
+          if (!s) continue
+          let m = s.match(/\((\d{6})\)/) || s.match(/(?:^|[^0-9])(\d{6})(?:[^0-9]|$)/)
+          if (m) return { code: m[1], label: s.split(/[:|(\-]/)[0].trim().slice(0, 20) || m[1] }
+          m = s.match(/\$([A-Z]{1,6})\b/) || s.match(/\b([A-Z]{2,6})\s*\$\s?\d/) || s.match(/^\s*([A-Z]{2,6})\s*[:\-]/)
+          if (m) return { code: m[1], label: m[1] }
+        }
+        return null
+      },
+    })
+    return (res?.result as { code: string; label: string } | null) ?? null
+  } catch {
+    return null
+  }
 }
 
 // ─── 지지/저항 (스윙 피벗 → 1% 클러스터, 결정적) ──────────────────────────
@@ -202,7 +236,7 @@ async function ensureContent(): Promise<boolean> {
       await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] })
       return true
     } catch {
-      alert('이 페이지에는 그릴 수 없어요. 툴바의 HOLD 아이콘을 누른 뒤 다시 시도해줘.')
+      alert('이 페이지에는 그릴 수 없어요 (크롬 내부 페이지 등). 주식 사이트 탭에서 다시 시도해줘.')
       return false
     }
   }
@@ -222,7 +256,10 @@ async function syncTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
   if (!tab?.id || !tab.url) return
   tabId = tab.id
-  const found = detectSymbol(tab.url, tab.title ?? '')
+  let found = detectSymbol(tab.url, tab.title ?? '')
+  if (!found && /^https?:/.test(tab.url)) {
+    found = await detectFromPage(tab.id)
+  }
   if (found && found.code !== symbol) {
     await loadSymbol(found.code, found.label)
   } else if (!found && !symbol) {
@@ -232,6 +269,10 @@ async function syncTab() {
 }
 
 // ─── 이벤트 ───────────────────────────────────────────────────────────────
+$('reDetect').addEventListener('click', () => {
+  symbol = null
+  void syncTab()
+})
 $('symGo').addEventListener('click', () => {
   const v = $<HTMLInputElement>('symInput').value.trim().toUpperCase()
   if (v) void loadSymbol(v, v)

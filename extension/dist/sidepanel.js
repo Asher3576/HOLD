@@ -33,11 +33,39 @@
         m = u.pathname.match(/stocks\/([A-Za-z0-9]{1,12})/);
         if (m && /^\d{6}$/.test(m[1])) return { code: m[1], label: title.split(/[:|-]/)[0].trim() || m[1] };
       }
-      m = url.match(/[^0-9](\d{6})(?:[^0-9]|$)/);
-      if (m) return { code: m[1], label: title.split(/[:|-]/)[0].trim() || m[1] };
+      if (!h.endsWith("stockersclub.com")) {
+        m = url.match(/[^0-9a-fA-F](\d{6})(?:[^0-9a-fA-F]|$)/);
+        if (m) return { code: m[1], label: title.split(/[:|-]/)[0].trim() || m[1] };
+      }
     } catch {
     }
     return null;
+  }
+  async function detectFromPage(tid) {
+    try {
+      const [res] = await chrome.scripting.executeScript({
+        target: { tabId: tid },
+        func: () => {
+          const texts = [document.title];
+          const og = document.querySelector('meta[property="og:title"]');
+          if (og?.content) texts.push(og.content);
+          const h1 = document.querySelector("h1");
+          if (h1?.textContent) texts.push(h1.textContent);
+          texts.push((document.body?.innerText || "").slice(0, 3e3));
+          for (const s of texts) {
+            if (!s) continue;
+            let m = s.match(/\((\d{6})\)/) || s.match(/(?:^|[^0-9])(\d{6})(?:[^0-9]|$)/);
+            if (m) return { code: m[1], label: s.split(/[:|(\-]/)[0].trim().slice(0, 20) || m[1] };
+            m = s.match(/\$([A-Z]{1,6})\b/) || s.match(/\b([A-Z]{2,6})\s*\$\s?\d/) || s.match(/^\s*([A-Z]{2,6})\s*[:\-]/);
+            if (m) return { code: m[1], label: m[1] };
+          }
+          return null;
+        }
+      });
+      return res?.result ?? null;
+    } catch {
+      return null;
+    }
   }
   function swingLevels(closes, current) {
     const piv = [];
@@ -164,7 +192,7 @@
         await chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
         return true;
       } catch {
-        alert("\uC774 \uD398\uC774\uC9C0\uC5D0\uB294 \uADF8\uB9B4 \uC218 \uC5C6\uC5B4\uC694. \uD234\uBC14\uC758 HOLD \uC544\uC774\uCF58\uC744 \uB204\uB978 \uB4A4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574\uC918.");
+        alert("\uC774 \uD398\uC774\uC9C0\uC5D0\uB294 \uADF8\uB9B4 \uC218 \uC5C6\uC5B4\uC694 (\uD06C\uB86C \uB0B4\uBD80 \uD398\uC774\uC9C0 \uB4F1). \uC8FC\uC2DD \uC0AC\uC774\uD2B8 \uD0ED\uC5D0\uC11C \uB2E4\uC2DC \uC2DC\uB3C4\uD574\uC918.");
         return false;
       }
     }
@@ -180,7 +208,10 @@
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id || !tab.url) return;
     tabId = tab.id;
-    const found = detectSymbol(tab.url, tab.title ?? "");
+    let found = detectSymbol(tab.url, tab.title ?? "");
+    if (!found && /^https?:/.test(tab.url)) {
+      found = await detectFromPage(tab.id);
+    }
     if (found && found.code !== symbol) {
       await loadSymbol(found.code, found.label);
     } else if (!found && !symbol) {
@@ -188,6 +219,10 @@
       $("symInfo").style.display = "none";
     }
   }
+  $("reDetect").addEventListener("click", () => {
+    symbol = null;
+    void syncTab();
+  });
   $("symGo").addEventListener("click", () => {
     const v = $("symInput").value.trim().toUpperCase();
     if (v) void loadSymbol(v, v);

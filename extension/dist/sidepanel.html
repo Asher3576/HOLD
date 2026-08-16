@@ -54,7 +54,11 @@
 
     <!-- 종목 -->
     <div class="card">
-      <div class="label">지금 보는 종목</div>
+      <div class="row">
+        <span class="label">지금 보는 종목</span>
+        <span style="flex:1"></span>
+        <button id="reDetect" class="ghost" style="height:26px;font-size:10.5px;padding:0 9px">다시 인식</button>
+      </div>
       <div id="symBox" style="margin-top:8px">
         <div class="dim" id="symEmpty">이 페이지에서 종목을 못 찾았어 — 직접 입력해줘</div>
         <div id="symInfo" style="display:none">
