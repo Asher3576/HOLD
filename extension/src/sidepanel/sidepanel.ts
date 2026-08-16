@@ -5,7 +5,9 @@
  */
 
 const FN = 'https://xpjtgmckrazfbyghkeve.supabase.co/functions/v1/prices'
-const APP_URL = 'https://hold.vercel.app' // 배포 주소가 다르면 여기만 교체
+// HOLD 웹 배포 주소 — 비워두면 패널에서 한 번 입력받아 저장한다.
+// (자리표시 주소를 넣으면 남의 사이트가 열릴 수 있어 기본값은 반드시 빈 값)
+const APP_URL_DEFAULT = ''
 // Supabase 퍼블리셔블 키 — 브라우저 노출용 공개 키 (시크릿 아님). 웹앱과 같은 프로젝트/계정.
 const SUPA = 'https://xpjtgmckrazfbyghkeve.supabase.co'
 const ANON = 'sb_publishable_YjEDQ3l-0wf3SM23JMTRqQ_R8_eqs9i'
@@ -1171,7 +1173,48 @@ $('authLogout').addEventListener('click', () => {
 })
 $('tBuy').addEventListener('click', () => void paperBuy())
 $<HTMLInputElement>('tQty').addEventListener('input', renderTrade)
-;($('appLink') as HTMLAnchorElement).href = APP_URL
+
+// ─── HOLD 앱 링크 (배포 주소는 저장값 → 기본값 순, 없으면 입력받는다) ────────
+let appUrl = APP_URL_DEFAULT
+const appLinkEl = $('appLink') as HTMLAnchorElement
+
+function updateAppLink() {
+  if (appUrl) appLinkEl.href = appUrl
+  else appLinkEl.removeAttribute('href')
+}
+
+appLinkEl.addEventListener('click', (e) => {
+  if (!appUrl) {
+    e.preventDefault()
+    $('appSet').style.display = 'flex'
+    $<HTMLInputElement>('appUrlIn').focus()
+  }
+})
+
+$('appUrlSave').addEventListener('click', () => {
+  let v = $<HTMLInputElement>('appUrlIn').value.trim()
+  if (!v) return
+  if (!/^https?:\/\//i.test(v)) v = `https://${v}`
+  try {
+    new URL(v)
+  } catch {
+    return
+  }
+  appUrl = v
+  void chrome.storage.local.set({ appUrl })
+  $('appSet').style.display = 'none'
+  updateAppLink()
+  void chrome.tabs.create({ url: appUrl })
+})
+$<HTMLInputElement>('appUrlIn').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('appUrlSave').click()
+})
+
+void chrome.storage.local.get('appUrl').then((o) => {
+  if (typeof o.appUrl === 'string' && o.appUrl) appUrl = o.appUrl
+  updateAppLink()
+})
+updateAppLink()
 
 void loadSess().then(() => {
   renderAuth()

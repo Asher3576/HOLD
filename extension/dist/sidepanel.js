@@ -2,7 +2,7 @@
 (() => {
   // src/sidepanel/sidepanel.ts
   var FN = "https://xpjtgmckrazfbyghkeve.supabase.co/functions/v1/prices";
-  var APP_URL = "https://hold.vercel.app";
+  var APP_URL_DEFAULT = "";
   var SUPA = "https://xpjtgmckrazfbyghkeve.supabase.co";
   var ANON = "sb_publishable_YjEDQ3l-0wf3SM23JMTRqQ_R8_eqs9i";
   var SEED_CASH = 1e7;
@@ -984,7 +984,42 @@
   });
   $("tBuy").addEventListener("click", () => void paperBuy());
   $("tQty").addEventListener("input", renderTrade);
-  $("appLink").href = APP_URL;
+  var appUrl = APP_URL_DEFAULT;
+  var appLinkEl = $("appLink");
+  function updateAppLink() {
+    if (appUrl) appLinkEl.href = appUrl;
+    else appLinkEl.removeAttribute("href");
+  }
+  appLinkEl.addEventListener("click", (e) => {
+    if (!appUrl) {
+      e.preventDefault();
+      $("appSet").style.display = "flex";
+      $("appUrlIn").focus();
+    }
+  });
+  $("appUrlSave").addEventListener("click", () => {
+    let v = $("appUrlIn").value.trim();
+    if (!v) return;
+    if (!/^https?:\/\//i.test(v)) v = `https://${v}`;
+    try {
+      new URL(v);
+    } catch {
+      return;
+    }
+    appUrl = v;
+    void chrome.storage.local.set({ appUrl });
+    $("appSet").style.display = "none";
+    updateAppLink();
+    void chrome.tabs.create({ url: appUrl });
+  });
+  $("appUrlIn").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") $("appUrlSave").click();
+  });
+  void chrome.storage.local.get("appUrl").then((o) => {
+    if (typeof o.appUrl === "string" && o.appUrl) appUrl = o.appUrl;
+    updateAppLink();
+  });
+  updateAppLink();
   void loadSess().then(() => {
     renderAuth();
     if (sess) void loadAccount();
